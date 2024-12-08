@@ -95,6 +95,7 @@ func init() {
 								}
 								return true
 							})
+							ctx.SendChain(message.Text("发送完成了哦"))
 							return
 						}
 						ctx.SendChain(message.Text("已经取消发送了哟~"))
