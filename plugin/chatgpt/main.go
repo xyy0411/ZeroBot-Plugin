@@ -42,10 +42,9 @@ var (
 
 func init() {
 	engine.OnFullMatch(`^查看gpt url`, zero.OnlyPrivate, getdb).SetBlock(true).Handle(func(ctx *zero.Ctx) {
-		msg, err := db.findurl()
-		if err != nil {
-			ctx.SendChain(message.Text("查看ChatGPT url失败"))
-			return
+		msg, _ := db.findurl()
+		if msg == "" {
+			msg = proxyURL
 		}
 		ctx.SendChain(message.Text("当前ChatGPT URL为:", msg))
 	})
@@ -135,7 +134,11 @@ func init() {
 				Role:    "user",
 				Content: args,
 			})
-			resp, err := completions(messages, apiKey, mo)
+			url, _ := db.findurl()
+			if url == "" {
+				url = proxyURL
+			}
+			resp, err := completions(messages, apiKey, mo, url)
 			if err != nil {
 				ctx.SendChain(message.Text("请求ChatGPT失败: ", err))
 				return
