@@ -58,12 +58,8 @@ func init() {
 		}
 		ctx.SendChain(message.Text("设置ChatGPT url成功"))
 	})
-	engine.OnRegex(`^设置gpt模型([\s\S]*)$`, zero.OnlyPrivate, getdb).SetBlock(false).
+	engine.OnRegex(`^设置gpt模型([\s\S]*)$`, zero.OnlyPrivate, zero.SuperUserPermission, getdb).SetBlock(false).
 		Handle(func(ctx *zero.Ctx) {
-			if zero.SuperUserPermission(ctx) {
-			} else {
-				return
-			}
 			err := db.insertmodel(-1, ctx.State["regex_matched"].([]string)[1])
 			if err != nil {
 				ctx.SendChain(message.Text("设置ChatGPT模型失败"))
