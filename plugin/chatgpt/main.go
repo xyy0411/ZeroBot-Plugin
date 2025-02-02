@@ -32,6 +32,8 @@ var (
 			"- 查看当前gpt模型" +
 			"- 删除本群预设\n" +
 			"- 查看预设列表\n" +
+			"- 查看gpt url\n" +
+			"- (私聊发送)设置gpt url [url]\n" +
 			"- (私聊发送)设置OpenAI apikey [apikey]\n" +
 			"- (私聊发送)删除apikey\n" +
 			"- (群聊发送)(授权|取消)(本群|全局)使用apikey\n" +
@@ -41,14 +43,14 @@ var (
 )
 
 func init() {
-	engine.OnFullMatch(`^查看gpt url`, zero.OnlyPrivate, getdb).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+	engine.OnFullMatch(`^查看gpt url`, getdb).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		msg, _ := db.findurl()
 		if msg == "" {
 			msg = proxyURL
 		}
 		ctx.SendChain(message.Text("当前ChatGPT URL为:", msg))
 	})
-	engine.OnRegex(`^设置gpt url ([\s\S]*)`, zero.OnlyPrivate, getdb).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+	engine.OnRegex(`^设置gpt url ([\s\S]*)`, zero.OnlyPrivate, zero.SuperUserPermission, getdb).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		err := db.seturl(1, ctx.State["regex_matched"].([]string)[1])
 		if err != nil {
 			ctx.SendChain(message.Text("设置ChatGPT url失败"))
