@@ -80,7 +80,7 @@ var client = &http.Client{
 }
 
 // completions gtp3.5文本模型回复
-func completions(messages []chatMessage, apiKey string, model string) (*chatGPTResponseBody, error) {
+func completions(messages []chatMessage, apiKey string, model string, url string) (*chatGPTResponseBody, error) {
 	com := chatGPTRequestBody{
 		Messages: messages,
 		Model:    model,
@@ -89,7 +89,7 @@ func completions(messages []chatMessage, apiKey string, model string) (*chatGPTR
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest("POST", proxyURL, bytes.NewReader(body))
+	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
