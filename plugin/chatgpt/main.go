@@ -2,9 +2,6 @@
 package chatgpt
 
 import (
-	"io"
-	"net/http"
-	"regexp"
 	"strings"
 	"time"
 
@@ -143,26 +140,10 @@ func init() {
 			}
 			reply := resp.Choices[0].Message
 			reply.Content = strings.TrimSpace(reply.Content)
-			re := regexp.MustCompile(`https://p16-flow-sign-va.ciciai.com/[^\s!]+`).FindString(reply.Content)
 			messages = append(messages, reply)
 			cache.Set(key, messages)
-			if re != "" {
-				response, err := http.Get(re)
-				defer response.Body.Close()
-				if err != nil {
-					ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text("ERROR :", err))
-					return
-				}
-				bytes, err := io.ReadAll(response.Body)
-				if err != nil {
-					ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text("ERROR :", err))
-					return
-				}
-				ctx.SendChain(message.Reply(ctx.Event.MessageID), message.ImageBytes(bytes), message.Text("\n本次消耗token: ", resp.Usage.PromptTokens, "+", resp.Usage.CompletionTokens, "=", resp.Usage.TotalTokens))
-			} else {
-				ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text(reply.Content),
-					message.Text("\n本次消耗token: ", resp.Usage.PromptTokens, "+", resp.Usage.CompletionTokens, "=", resp.Usage.TotalTokens))
-			}
+			ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text(reply.Content),
+				message.Text("\n本次消耗token: ", resp.Usage.PromptTokens, "+", resp.Usage.CompletionTokens, "=", resp.Usage.TotalTokens))
 		})
 	engine.OnRegex(`^设置\s*OpenAI\s*apikey\s*([\s\S]*)$`, zero.OnlyPrivate, getdb).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		err := db.insertkey(-ctx.Event.UserID, ctx.State["regex_matched"].([]string)[1])
