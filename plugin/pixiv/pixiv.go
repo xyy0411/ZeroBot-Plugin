@@ -236,7 +236,7 @@ func GetIllustsByKeyword(keyword string, limit int, gid int64) ([]IllustCache, e
 }
 
 func (c *IllustCache) FetchPixivImage() ([]byte, error) {
-	client := web.NewTLS12Client()
+	client := NewClient()
 
 	data, err := c.fetchImg(client, c.Original)
 	if err != nil {
@@ -315,7 +315,7 @@ func SearchPixivIllustrations(accessToken, url string) (*RootEntity, error) {
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("User-Agent", "PixivAndroidApp/5.0.234 (Android 11; Pixel 5)")
 
-	client := web.NewTLS12Client()
+	client := NewClient()
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err

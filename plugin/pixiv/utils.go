@@ -1,9 +1,28 @@
 package pixiv
 
 import (
+	"crypto/tls"
+	"net/http"
 	"net/url"
 	"strings"
+
+	trshttp "github.com/fumiama/terasu/http"
 )
+
+func NewClient() *http.Client {
+
+	proxyURL, _ := url.Parse("http://127.0.0.1:7897")
+
+	return &http.Client{
+		Transport: &http.Transport{
+			DialTLSContext: trshttp.DefaultClient.Transport.(*http.Transport).DialTLSContext,
+			TLSClientConfig: &tls.Config{
+				MaxVersion: tls.VersionTLS12,
+			},
+			Proxy: http.ProxyURL(proxyURL),
+		},
+	}
+}
 
 func removeR18Keywords(keyword string) string {
 	if keyword == "" {
