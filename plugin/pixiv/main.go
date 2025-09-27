@@ -1,0 +1,110 @@
+package pixiv
+
+import (
+	"github.com/FloatTech/floatbox/file"
+	ctrl "github.com/FloatTech/zbpctrl"
+	"github.com/FloatTech/zbputils/control"
+	"github.com/jinzhu/gorm"
+	zero "github.com/wdvxdr1123/ZeroBot"
+	"github.com/wdvxdr1123/ZeroBot/message"
+	"math/rand"
+	"os"
+	"strconv"
+)
+
+var defaultKeyword = []string{"萝莉", "御姐", "妹妹", "姐姐"}
+
+func init() {
+	if file.IsNotExist("data/pixiv") {
+		err := os.MkdirAll("data/pixiv", 0775)
+		if err != nil {
+			panic(err)
+		}
+	}
+	var err error
+	db, err = gorm.Open("sqlite3", "data/pixiv/pixiv.db")
+	if err != nil {
+		panic(err)
+	}
+	if err = db.AutoMigrate(&IllustCache{}, &SentImage{}, &RefreshToken{}).Error; err != nil {
+		panic(err)
+	}
+}
+
+func init() {
+	engine := control.AutoRegister(&ctrl.Options[*zero.Ctx]{
+		DisableOnDefault: false,
+		Brief:            "Pixiv 图片搜索",
+		Help:             "-[x张]色图 [关键词]\n []为可忽略项\n可添加多个关键词每个关键词用空格隔开\n默认不发R-18如果要发就加一个R-18关键词",
+	})
+
+	engine.OnRegex(`^设置p站token (.*)`, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+		ctx.SendChain(message.Text("1"))
+		token := ctx.State["regex_matched"].([]string)[1]
+		var refreshToken RefreshToken
+		refreshToken.User = ctx.Event.UserID
+		refreshToken.Token = token
+		if err := db.Save(&refreshToken).Error; err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+
+		ctx.SendChain(message.Text("Pixiv Token: ", token))
+	})
+
+	engine.OnRegex(`^(\d+)?张?色图\s*(\S+)?`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+		limit := ctx.State["regex_matched"].([]string)[1]
+		keyword := ctx.State["regex_matched"].([]string)[2]
+
+		if limit == "" {
+			limit = "1"
+		}
+
+		if keyword == "" {
+			keyword = defaultKeyword[rand.Intn(len(defaultKeyword))]
+		}
+
+		limitInt, err := strconv.Atoi(limit)
+		if err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+
+		if limitInt > 10 {
+			ctx.SendChain(message.Text("图片太多了"))
+			return
+		}
+
+		illusts, err := GetIllustsByKeyword(keyword, limitInt, ctx.Event.GroupID)
+		if err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+
+		for _, illust := range illusts {
+			img, err1 := illust.FetchPixivImage()
+			if err1 != nil {
+				ctx.SendChain(message.Text("ERROR: ", err1))
+				continue
+			}
+			ctx.SendChain(message.Text(
+				"PID:", illust.PID,
+				"\n标题:", illust.Title,
+				"\n画师:", illust.AuthorName,
+				"\n收藏数:", illust.Bookmarks,
+				"\n预览数:", illust.TotalView,
+				"\n发布时间:", illust.CreateDate,
+			), message.ImageBytes(img))
+			sent := SentImage{
+				GroupID: ctx.Event.GroupID,
+				PID:     illust.PID,
+			}
+
+			if err = db.Save(&sent).Error; err != nil {
+				ctx.SendChain(message.Text("ERROR: ", err))
+			}
+		}
+
+		BackgroundCacheFiller(keyword, 30, 15, ctx.Event.GroupID)
+	})
+}
