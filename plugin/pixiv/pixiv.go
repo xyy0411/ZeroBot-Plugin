@@ -128,7 +128,7 @@ func FetchPixivIllusts(keyword string, isR18 bool, limit int) (results []IllustS
 
 			// 检查是不是r18
 			for _, tag := range illust.Tags {
-				if tag.Name == "R-18" {
+				if !requiresNonR18(tag.Name) {
 					cache.R18 = true
 				}
 			}

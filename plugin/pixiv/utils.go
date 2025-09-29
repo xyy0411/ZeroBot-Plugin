@@ -11,7 +11,7 @@ import (
 
 func NewClient() *http.Client {
 
-	proxyURL, _ := url.Parse("http://127.0.0.1:7897")
+	proxyURL, _ := url.Parse("http://127.0.0.1:10899")
 
 	return &http.Client{
 		Transport: &http.Transport{
