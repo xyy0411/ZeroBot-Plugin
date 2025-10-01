@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/FloatTech/floatbox/web"
 	"github.com/jinzhu/gorm"
 	"io"
 	"net/http"
@@ -49,7 +48,7 @@ func BackgroundCacheFiller(keyword string, minCache int, fetchCount int, gid int
 
 		fmt.Printf("后台补充关键词 %s, 数量 %d\n", keyword, fetchCount)
 
-		newIllusts, err := FetchPixivIllusts(keyword, requiresNonR18(keyword), fetchCount)
+		newIllusts, err := FetchPixivIllusts(removeR18Keywords(keyword), isR18(keyword), fetchCount)
 		if err != nil {
 			fmt.Println("后台补充缓存失败:", err)
 			return
@@ -64,7 +63,7 @@ func BackgroundCacheFiller(keyword string, minCache int, fetchCount int, gid int
 }
 
 // FetchPixivIllusts 拉取 Pixiv 插画并缓存
-func FetchPixivIllusts(keyword string, isR18 bool, limit int) (results []IllustSummary, err error) {
+func FetchPixivIllusts(keyword string, isR18Req bool, limit int) (results []IllustSummary, err error) {
 	seen := make(map[int64]struct{})
 	fetched := 0
 
@@ -103,40 +102,34 @@ func FetchPixivIllusts(keyword string, isR18 bool, limit int) (results []IllustS
 				continue
 			}
 
-			summary := ToIllustSummary(illust)
-			results = append(results, summary)
-
-			cache := IllustCache{
-				PID:        illust.Id,
-				Keyword:    keyword,
-				Title:      illust.Title,
-				AuthorName: illust.User.Name,
-				ImageURL:   illust.ImageUrls.Large,
-				// Original:   original,
-				Bookmarks:  illust.TotalBookmarks,
-				TotalView:  illust.TotalView,
-				CreateDate: illust.CreateDate,
-				PageCount:  illust.PageCount,
-			}
-
+			originalUrl := ""
 			// 判断作品是不是有多张图如果是多张就取第一张为原图
 			if illust.MetaSinglePage.OriginalImageUrl == "" {
-				cache.Original = illust.MetaPages[0].ImageURLs.Original
+				originalUrl = illust.MetaPages[0].ImageURLs.Original
 			} else {
-				cache.Original = illust.MetaSinglePage.OriginalImageUrl
+				originalUrl = illust.MetaSinglePage.OriginalImageUrl
 			}
 
-			// 检查是不是r18
-			for _, tag := range illust.Tags {
-				if !requiresNonR18(tag.Name) {
-					cache.R18 = true
+			illustSummary := ToIllustSummary(illust, originalUrl)
+
+			// 判断 R18
+			if illust.XRestrict == 1 {
+				illustSummary.R18 = true
+			} else {
+				for _, tag := range illust.Tags {
+					if isR18(tag.Name) {
+						illustSummary.R18 = true
+						break
+					}
 				}
 			}
 
-			if !(cache.R18 && isR18) {
+			// 如果插画的 R18 状态和请求的不一致，就跳过
+			if illustSummary.R18 != isR18Req {
 				continue
 			}
 
+			results = append(results, illustSummary)
 			seen[illust.Id] = struct{}{}
 			fetched++
 
@@ -169,6 +162,7 @@ func GetIllustsByKeyword(keyword string, limit int, gid int64) ([]IllustCache, e
 	// 添加R-18过滤条件
 	if filterR18 {
 		query = query.Where("r18 = ?", false)
+		fmt.Println("过滤18+")
 	}
 
 	err := query.Limit(limit).Find(&illustInfos).Error
@@ -187,8 +181,10 @@ func GetIllustsByKeyword(keyword string, limit int, gid int64) ([]IllustCache, e
 		limit -= len(illustInfos)
 	}
 
+	r18Keywords := removeR18Keywords(keyword)
+
 	// 缓存没数据 -> 调用Pixiv API拉取
-	pixivResults, err := FetchPixivIllusts(removeR18Keywords(keyword), requiresNonR18(keyword), limit)
+	pixivResults, err := FetchPixivIllusts(r18Keywords, isR18(keyword), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -198,21 +194,21 @@ func GetIllustsByKeyword(keyword string, limit int, gid int64) ([]IllustCache, e
 		return nil, fmt.Errorf("这个关键词可能没有找到符合条件的图片或出现未知错误")
 	}
 
-	r18Keywords := removeR18Keywords(keyword)
-
 	// 第三步：把拉取到的数据存到缓存表
 	for _, r := range pixivResults {
+		fmt.Println(r.OriginalUrl)
 		Illust := IllustCache{
-			PID:        r.PID,
-			Keyword:    r18Keywords,
-			Title:      r.Title,
-			AuthorName: r.AuthorName,
-			ImageURL:   r.ImageUrl,
-			Original:   r.OriginalUrl,
-			Bookmarks:  r.TotalBookmarks,
-			TotalView:  r.TotalView,
-			CreateDate: r.CreateDate,
-			PageCount:  r.PageCount,
+			PID:         r.PID,
+			Keyword:     r18Keywords,
+			Title:       r.Title,
+			AuthorName:  r.AuthorName,
+			ImageURL:    r.ImageUrl,
+			OriginalURL: r.OriginalUrl,
+			Bookmarks:   r.TotalBookmarks,
+			TotalView:   r.TotalView,
+			CreateDate:  r.CreateDate,
+			PageCount:   r.PageCount,
+			R18:         r.R18,
 		}
 
 		illustInfos = append(illustInfos, Illust)
@@ -238,13 +234,15 @@ func GetIllustsByKeyword(keyword string, limit int, gid int64) ([]IllustCache, e
 func (c *IllustCache) FetchPixivImage() ([]byte, error) {
 	client := NewClient()
 
-	data, err := c.fetchImg(client, c.Original)
+	fmt.Println("下载", c.PID)
+	data, err := c.fetchImg(client, c.OriginalURL)
 	if err != nil {
-		fmt.Println("下载的是缩略图")
-		data, err = c.fetchImg(client, c.ImageURL)
-		if err != nil {
-			return nil, err
-		}
+		/*		fmt.Println("下载的是缩略图")
+				data, err = c.fetchImg(client, c.ImageURL)
+				if err != nil {
+					return nil, err
+				}*/
+		return nil, err
 	}
 	return data, nil
 }
@@ -290,7 +288,7 @@ func RefreshPixivAccessToken(refreshToken string) (*TokenStore, error) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("User-Agent", "PixivAndroidApp/5.0.234 (Android 11; Pixel 5)")
 
-	client := web.NewTLS12Client()
+	client := NewClient()
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
