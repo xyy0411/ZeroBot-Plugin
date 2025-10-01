@@ -28,6 +28,7 @@ type IllustSummary struct {
 	TotalBookmarks int64    // 总收藏数
 	IsBookmarked   bool     // 是否已收藏
 	IsAI           bool     // 是否为AI作品
+	R18            bool     // 是不是18+的
 }
 
 func NewTokenStore() *TokenStore {
