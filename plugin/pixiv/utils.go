@@ -2,16 +2,15 @@ package pixiv
 
 import (
 	"crypto/tls"
+	trshttp "github.com/fumiama/terasu/http"
 	"net/http"
 	"net/url"
 	"strings"
-
-	trshttp "github.com/fumiama/terasu/http"
 )
 
 func NewClient() *http.Client {
 
-	proxyURL, _ := url.Parse("http://127.0.0.1:10899")
+	proxyURL, _ := url.Parse("http://127.0.0.1:7897")
 
 	return &http.Client{
 		Transport: &http.Transport{
@@ -54,8 +53,9 @@ func requiresNonR18(keyword string) bool {
 			return true
 		}
 	}
+
 	// 如果关键词中不包含R-18相关词汇，则默认过滤R-18
-	return !isR18(keyword)
+	return false
 }
 
 func isR18(s string) bool {
@@ -98,10 +98,11 @@ func BuildPixivSearchURL(keyword string) string {
 }
 
 // ToIllustSummary 提取有用的字段
-func ToIllustSummary(illust IllustsEntity) IllustSummary {
+func ToIllustSummary(illust IllustsEntity, orignalUrl string) IllustSummary {
 	// 提取标签名称
 	var tags []string
 	for _, tag := range illust.Tags {
+
 		tags = append(tags, tag.Name)
 	}
 
@@ -112,6 +113,7 @@ func ToIllustSummary(illust IllustsEntity) IllustSummary {
 		ImageUrl:       illust.ImageUrls.Medium,
 		AuthorName:     illust.User.Name,
 		AuthorID:       illust.User.Id,
+		OriginalUrl:    orignalUrl,
 		Tags:           tags,
 		CreateDate:     illust.CreateDate,
 		PageCount:      illust.PageCount,
@@ -123,10 +125,10 @@ func ToIllustSummary(illust IllustsEntity) IllustSummary {
 }
 
 // ToIllustSummaries 批量转换函数
-func ToIllustSummaries(illusts []IllustsEntity) []IllustSummary {
+func ToIllustSummaries(illusts []IllustsEntity, originalUrl string) []IllustSummary {
 	summaries := make([]IllustSummary, len(illusts))
 	for i, illust := range illusts {
-		summaries[i] = ToIllustSummary(illust)
+		summaries[i] = ToIllustSummary(illust, originalUrl)
 	}
 	return summaries
 }
