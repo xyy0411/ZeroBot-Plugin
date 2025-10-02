@@ -24,7 +24,7 @@ var defaultKeyword = []string{"萝莉", "御姐", "妹妹", "姐姐"}
 var defaultClient *http.Client
 
 func init() {
-	proxyURL, err := url.Parse("http://127.0.0.1:7897")
+	proxyURL, err := url.Parse("http://127.0.0.1:10809")
 	if err != nil {
 		log.Print("连接代理错误:", err)
 	}
