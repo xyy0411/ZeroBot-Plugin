@@ -25,7 +25,7 @@ var defaultKeyword = []string{"萝莉", "御姐", "妹妹", "姐姐"}
 var defaultClient *http.Client
 
 func init() {
-	proxyURL, err := url.Parse("http://127.0.0.1:10809")
+	proxyURL, err := url.Parse("http://127.0.0.1:7897")
 	if err != nil {
 		log.Print("连接代理错误:", err)
 	}
@@ -35,6 +35,7 @@ func init() {
 			TLSClientConfig: &tls.Config{MaxVersion: tls.VersionTLS13},
 			Proxy:           http.ProxyURL(proxyURL),
 		},
+		Timeout: time.Second * 25,
 	}
 }
 
