@@ -2,6 +2,7 @@ package pixiv
 
 import (
 	"crypto/tls"
+	"fmt"
 	"github.com/FloatTech/floatbox/file"
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
@@ -11,6 +12,7 @@ import (
 	"github.com/wdvxdr1123/ZeroBot/message"
 	"math/rand"
 	"net/http"
+	_ "net/http/pprof"
 	"net/url"
 	"os"
 	"strconv"
@@ -29,7 +31,7 @@ func init() {
 
 	defaultClient = &http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{MaxVersion: tls.VersionTLS12},
+			TLSClientConfig: &tls.Config{MaxVersion: tls.VersionTLS13},
 			Proxy:           http.ProxyURL(proxyURL),
 		},
 	}
@@ -54,6 +56,14 @@ func init() {
 	sqlDB.SetMaxOpenConns(10)           // 最多 10 个连接
 	sqlDB.SetMaxIdleConns(5)            // 最多保留 5 个空闲连接
 	sqlDB.SetConnMaxLifetime(time.Hour) // 一个连接最多用 1 小时
+
+	/*	go func() {
+		// 使用 6060 端口
+		log.Println("Starting pprof server on http://localhost:6060")
+		if err := http.ListenAndServe("localhost:6060", nil); err != nil {
+			log.Printf("pprof server failed: %v", err)
+		}
+	}()*/
 }
 
 func init() {
@@ -115,6 +125,7 @@ func init() {
 				ctx.SendChain(message.Text("ERROR: ", err1))
 				continue
 			}
+			fmt.Println("获取", illust.PID, "成功，准备发送！")
 			ctx.SendChain(message.Text(
 				"PID:", illust.PID,
 				"\n标题:", illust.Title,
@@ -122,7 +133,7 @@ func init() {
 				"\n收藏数:", illust.Bookmarks,
 				"\n预览数:", illust.TotalView,
 				"\n发布时间:", illust.CreateDate,
-			), message.ImageBytes(img))
+			), message.Image(img))
 			sent := SentImage{
 				GroupID: ctx.Event.GroupID,
 				PID:     illust.PID,

@@ -2,6 +2,7 @@ package pixiv
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 const maxImageSize = 20 << 20
@@ -154,7 +156,7 @@ func GetIllustsByKeyword(keyword string, r18Req bool, limit int, gid int64) ([]I
 		SubQuery()
 
 	query := db.
-		Where("keyword = ?", removeR18Keywords(keyword)).
+		Where("keyword = ?", keyword).
 		Where("pid NOT IN (?)", sub)
 
 	// 添加R-18过滤条件
@@ -179,10 +181,8 @@ func GetIllustsByKeyword(keyword string, r18Req bool, limit int, gid int64) ([]I
 		limit -= len(illustInfos)
 	}
 
-	r18Keywords := removeR18Keywords(keyword)
-
 	// 缓存没数据 -> 调用Pixiv API拉取
-	pixivResults, err := FetchPixivIllusts(r18Keywords, r18Req, limit)
+	pixivResults, err := FetchPixivIllusts(keyword, r18Req, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -192,16 +192,16 @@ func GetIllustsByKeyword(keyword string, r18Req bool, limit int, gid int64) ([]I
 		return nil, fmt.Errorf("这个关键词可能没有找到符合条件的图片或出现未知错误")
 	}
 
-	if len(illustInfos) > 0 {
+	if len(illustInfos) > 0 && len(pixivResults) == 0 {
+		fmt.Println("http没有找到图片")
 		return illustInfos, nil
 	}
 
 	// 第三步：把拉取到的数据存到缓存表
 	for _, r := range pixivResults {
-		fmt.Println(r.OriginalUrl)
 		Illust := IllustCache{
 			PID:         r.PID,
-			Keyword:     r18Keywords,
+			Keyword:     keyword,
 			Title:       r.Title,
 			AuthorName:  r.AuthorName,
 			ImageURL:    r.ImageUrl,
@@ -218,6 +218,8 @@ func GetIllustsByKeyword(keyword string, r18Req bool, limit int, gid int64) ([]I
 		db.Create(&Illust)
 	}
 
+	fmt.Println("预计发送", len(illustInfos), "张图片")
+
 	/*	sub2 := db.Model(&SentImage{}).Select("pid").SubQuery()
 		err = db.
 			Where("keyword = ?", keyword).
@@ -231,26 +233,26 @@ func GetIllustsByKeyword(keyword string, r18Req bool, limit int, gid int64) ([]I
 	return illustInfos, nil
 }
 
-func (c *IllustCache) FetchPixivImage() ([]byte, error) {
+func (c *IllustCache) FetchPixivImage() (string, error) {
 	client := NewClient()
 
 	fmt.Println("下载", c.PID)
-	data, err := c.fetchImg(client, c.OriginalURL)
+	data, err := c.fetchImg(client, c.ImageURL)
 	if err != nil {
 		/*		fmt.Println("下载的是缩略图")
 				data, err = c.fetchImg(client, c.ImageURL)
 				if err != nil {
 					return nil, err
 				}*/
-		return nil, err
+		return "", err
 	}
 	return data, nil
 }
 
-func (c *IllustCache) fetchImg(client *http.Client, url string) ([]byte, error) {
+func (c *IllustCache) fetchImg(client *http.Client, url string) (string, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("创建请求失败: %w", err)
+		return "", fmt.Errorf("创建请求失败: %w", err)
 	}
 
 	req.Header.Set("Referer", "https://www.pixiv.net/")
@@ -259,24 +261,30 @@ func (c *IllustCache) fetchImg(client *http.Client, url string) ([]byte, error) 
 	// 发送请求
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("请求失败: %w", err)
+		return "", fmt.Errorf("请求失败: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("下载图片失败: HTTP %d", resp.StatusCode)
+		return "", fmt.Errorf("下载图片失败: HTTP %d", resp.StatusCode)
 	}
 
 	// 如果图片 > 20mb 就下载缩略图
-	if resp.ContentLength > maxImageSize {
+	if resp.ContentLength > 0 && resp.ContentLength > maxImageSize {
 		return c.fetchImg(client, c.ImageURL)
 	}
 
-	data, err := io.ReadAll(resp.Body)
+	var builder strings.Builder
+	builder.WriteString("base64://")
+	base64Encoder := base64.NewEncoder(base64.StdEncoding, &builder)
+	base64Encoder.Close()
+
+	_, err = io.Copy(base64Encoder, resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("读取数据失败: %w", err)
+		return "", err
 	}
-	return data, nil
+
+	return builder.String(), nil
 }
 
 // RefreshPixivAccessToken 用 refresh_token 刷新 access_token
