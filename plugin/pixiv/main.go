@@ -125,7 +125,7 @@ func init() {
 				ctx.SendChain(message.Text("ERROR: ", err1))
 				continue
 			}
-			fmt.Println("获取", illust.PID, "成功，准备发送！")
+			fmt.Println("获取", illust.PID, "成功，准备发送！", float64(len(img))/1024/1024, "mb")
 			ctx.SendChain(message.Text(
 				"PID:", illust.PID,
 				"\n标题:", illust.Title,
