@@ -11,13 +11,13 @@ import (
 	"net/url"
 )
 
+const maxImageSize = 20 << 20
+
 // BackgroundCacheFiller 异步补充指定关键词的 Pixiv 图片缓存
-func BackgroundCacheFiller(keyword string, minCache int, fetchCount int, gid int64) {
+func BackgroundCacheFiller(keyword string, minCache int, r18Req bool, fetchCount int, gid int64) {
 	go func() {
 
 		var count int64
-
-		filterR18 := requiresNonR18(keyword)
 
 		// 第一步：先查缓存（排除掉已发送的）
 		sub := db.Model(&SentImage{}).
@@ -30,7 +30,7 @@ func BackgroundCacheFiller(keyword string, minCache int, fetchCount int, gid int
 			Where("pid NOT IN (?)", sub)
 
 		// 添加R-18过滤条件
-		if filterR18 {
+		if !r18Req {
 			query = query.Where("r18 = ?", false)
 		}
 
@@ -48,7 +48,7 @@ func BackgroundCacheFiller(keyword string, minCache int, fetchCount int, gid int
 
 		fmt.Printf("后台补充关键词 %s, 数量 %d\n", keyword, fetchCount)
 
-		newIllusts, err := FetchPixivIllusts(removeR18Keywords(keyword), isR18(keyword), fetchCount)
+		newIllusts, err := FetchPixivIllusts(keyword, r18Req, fetchCount)
 		if err != nil {
 			fmt.Println("后台补充缓存失败:", err)
 			return
@@ -144,10 +144,8 @@ func FetchPixivIllusts(keyword string, isR18Req bool, limit int) (results []Illu
 }
 
 // GetIllustsByKeyword 根据关键词获取插画（优先缓存，没有则从Pixiv拉取）
-func GetIllustsByKeyword(keyword string, limit int, gid int64) ([]IllustCache, error) {
+func GetIllustsByKeyword(keyword string, r18Req bool, limit int, gid int64) ([]IllustCache, error) {
 	var illustInfos []IllustCache
-
-	filterR18 := requiresNonR18(keyword)
 
 	// 第一步：先查缓存（排除掉已发送的）
 	sub := db.Model(&SentImage{}).
@@ -160,7 +158,7 @@ func GetIllustsByKeyword(keyword string, limit int, gid int64) ([]IllustCache, e
 		Where("pid NOT IN (?)", sub)
 
 	// 添加R-18过滤条件
-	if filterR18 {
+	if !r18Req {
 		query = query.Where("r18 = ?", false)
 		fmt.Println("过滤18+")
 	}
@@ -184,14 +182,18 @@ func GetIllustsByKeyword(keyword string, limit int, gid int64) ([]IllustCache, e
 	r18Keywords := removeR18Keywords(keyword)
 
 	// 缓存没数据 -> 调用Pixiv API拉取
-	pixivResults, err := FetchPixivIllusts(r18Keywords, isR18(keyword), limit)
+	pixivResults, err := FetchPixivIllusts(r18Keywords, r18Req, limit)
 	if err != nil {
 		return nil, err
 	}
 
-	// 如果Pixiv也没数据，直接返回空
-	if len(pixivResults) == 0 {
+	// 如果Pixiv也没查到直接返回空
+	if len(pixivResults) == 0 && len(illustInfos) == 0 {
 		return nil, fmt.Errorf("这个关键词可能没有找到符合条件的图片或出现未知错误")
+	}
+
+	if len(illustInfos) > 0 {
+		return illustInfos, nil
 	}
 
 	// 第三步：把拉取到的数据存到缓存表
@@ -213,20 +215,18 @@ func GetIllustsByKeyword(keyword string, limit int, gid int64) ([]IllustCache, e
 
 		illustInfos = append(illustInfos, Illust)
 
-		if err := db.Create(&Illust).Error; err != nil {
-			return nil, err
-		}
+		db.Create(&Illust)
 	}
 
-	sub2 := db.Model(&SentImage{}).Select("pid").SubQuery()
-	err = db.
-		Where("keyword = ?", keyword).
-		Where("pid NOT IN (?)", sub2).
-		Limit(limit).
-		Find(&illustInfos).Error
-	if err != nil {
-		return nil, err
-	}
+	/*	sub2 := db.Model(&SentImage{}).Select("pid").SubQuery()
+		err = db.
+			Where("keyword = ?", keyword).
+			Where("pid NOT IN (?)", sub2).
+			Limit(limit).
+			Find(&illustInfos).Error
+		if err != nil {
+			return nil, err
+		}*/
 
 	return illustInfos, nil
 }
@@ -264,7 +264,12 @@ func (c *IllustCache) fetchImg(client *http.Client, url string) ([]byte, error) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("下载失败: HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("下载图片失败: HTTP %d", resp.StatusCode)
+	}
+
+	// 如果图片 > 20mb 就下载缩略图
+	if resp.ContentLength > maxImageSize {
+		return c.fetchImg(client, c.ImageURL)
 	}
 
 	data, err := io.ReadAll(resp.Body)

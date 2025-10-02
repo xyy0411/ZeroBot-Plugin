@@ -49,6 +49,7 @@ func (t *TokenStore) GetAccessToken() (string, error) {
 		}
 		t.RefreshToken = t1.Token
 	}
+
 	// 2. 否则用 refresh token 刷新
 	newToken, err := RefreshPixivAccessToken(t.RefreshToken)
 	if err != nil {

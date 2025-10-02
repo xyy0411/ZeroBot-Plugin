@@ -1,18 +1,39 @@
 package pixiv
 
 import (
+	"crypto/tls"
 	"github.com/FloatTech/floatbox/file"
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
 	"github.com/jinzhu/gorm"
+	log "github.com/sirupsen/logrus"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
 	"math/rand"
+	"net/http"
+	"net/url"
 	"os"
 	"strconv"
+	"time"
 )
 
 var defaultKeyword = []string{"萝莉", "御姐", "妹妹", "姐姐"}
+
+var defaultClient *http.Client
+
+func init() {
+	proxyURL, err := url.Parse("http://127.0.0.1:7897")
+	if err != nil {
+		log.Print("连接代理错误:", err)
+	}
+
+	defaultClient = &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{MaxVersion: tls.VersionTLS12},
+			Proxy:           http.ProxyURL(proxyURL),
+		},
+	}
+}
 
 func init() {
 	if file.IsNotExist("data/pixiv") {
@@ -29,6 +50,10 @@ func init() {
 	if err = db.AutoMigrate(&IllustCache{}, &SentImage{}, &RefreshToken{}).Error; err != nil {
 		panic(err)
 	}
+	sqlDB := db.DB()
+	sqlDB.SetMaxOpenConns(10)           // 最多 10 个连接
+	sqlDB.SetMaxIdleConns(5)            // 最多保留 5 个空闲连接
+	sqlDB.SetConnMaxLifetime(time.Hour) // 一个连接最多用 1 小时
 }
 
 func init() {
@@ -52,7 +77,7 @@ func init() {
 		ctx.SendChain(message.Text("Pixiv Token: ", token))
 	})
 
-	engine.OnRegex(`^(\d+)?张?色图\s*(\S+)?`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+	engine.OnRegex(`^(\d+)?张?色图\s*(.+)?`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		limit := ctx.State["regex_matched"].([]string)[1]
 		keyword := ctx.State["regex_matched"].([]string)[2]
 
@@ -75,7 +100,10 @@ func init() {
 			return
 		}
 
-		illusts, err := GetIllustsByKeyword(keyword, limitInt, ctx.Event.GroupID)
+		r18Req := isR18(keyword)                   // 是否用户要求 R-18
+		cleanKeyword := removeR18Keywords(keyword) // 去掉 R-18 关键词
+
+		illusts, err := GetIllustsByKeyword(cleanKeyword, r18Req, limitInt, ctx.Event.GroupID)
 		if err != nil {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
@@ -105,6 +133,6 @@ func init() {
 			}
 		}
 
-		BackgroundCacheFiller(keyword, 30, 15, ctx.Event.GroupID)
+		BackgroundCacheFiller(cleanKeyword, 30, r18Req, 5, ctx.Event.GroupID)
 	})
 }
