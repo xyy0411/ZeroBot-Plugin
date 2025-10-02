@@ -237,7 +237,7 @@ func (c *IllustCache) FetchPixivImage() (string, error) {
 	client := NewClient()
 
 	fmt.Println("下载", c.PID)
-	data, err := c.fetchImg(client, c.ImageURL)
+	data, err := c.fetchImg(client, c.OriginalURL)
 	if err != nil {
 		/*		fmt.Println("下载的是缩略图")
 				data, err = c.fetchImg(client, c.ImageURL)
