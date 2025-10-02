@@ -144,6 +144,6 @@ func init() {
 			}
 		}
 
-		BackgroundCacheFiller(cleanKeyword, 30, r18Req, 5, ctx.Event.GroupID)
+		BackgroundCacheFiller(cleanKeyword, 15, r18Req, 5, ctx.Event.GroupID)
 	})
 }
