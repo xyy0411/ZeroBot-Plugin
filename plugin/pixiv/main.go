@@ -6,6 +6,7 @@ import (
 	"github.com/FloatTech/floatbox/file"
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
+	"github.com/FloatTech/zbputils/ctxext"
 	"github.com/jinzhu/gorm"
 	log "github.com/sirupsen/logrus"
 	zero "github.com/wdvxdr1123/ZeroBot"
@@ -71,7 +72,7 @@ func init() {
 		DisableOnDefault: false,
 		Brief:            "Pixiv 图片搜索",
 		Help:             "-[x张]色图 [关键词]\n []为可忽略项\n可添加多个关键词每个关键词用空格隔开\n默认不发R-18如果要发就加一个R-18关键词",
-	})
+	}).ApplySingle(ctxext.NewGroupSingle("别着急，都会有的"))
 
 	engine.OnRegex(`^设置p站token (.*)`, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		ctx.SendChain(message.Text("1"))
