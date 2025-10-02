@@ -2,7 +2,6 @@ package pixiv
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 )
 
 const maxImageSize = 20 << 20
@@ -92,6 +90,7 @@ func FetchPixivIllusts(keyword string, isR18Req bool, limit int) ([]IllustSummar
 
 	nextURL := BuildPixivSearchURL(keyword)
 	for len(results) <= limit && nextURL != "" {
+		fmt.Println("翻页")
 		rawData, err := SearchPixivIllustrations(accessToken, nextURL)
 		if err != nil {
 			return nil, err
@@ -141,6 +140,7 @@ func FetchPixivIllusts(keyword string, isR18Req bool, limit int) ([]IllustSummar
 				break
 			}
 		}
+		fmt.Println(rawData.NextUrl)
 		nextURL = rawData.NextUrl
 	}
 
@@ -222,26 +222,26 @@ func GetIllustsByKeyword(keyword string, r18Req bool, limit int, gid int64) ([]I
 	return illustInfos, nil
 }
 
-func (c *IllustCache) FetchPixivImage() (string, error) {
+func (c *IllustCache) FetchPixivImage() ([]byte, error) {
 	client := NewClient()
 
 	fmt.Println("下载", c.PID)
-	data, err := c.fetchImg(client, c.ImageURL)
+	data, err := c.fetchImg(client, c.OriginalURL)
 	if err != nil {
 		/*		fmt.Println("下载的是缩略图")
 				data, err = c.fetchImg(client, c.ImageURL)
 				if err != nil {
 					return nil, err
 				}*/
-		return "", err
+		return nil, err
 	}
 	return data, nil
 }
 
-func (c *IllustCache) fetchImg(client *http.Client, url string) (string, error) {
+func (c *IllustCache) fetchImg(client *http.Client, url string) ([]byte, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return "", fmt.Errorf("创建请求失败: %w", err)
+		return nil, fmt.Errorf("创建请求失败: %w", err)
 	}
 
 	req.Header.Set("Referer", "https://www.pixiv.net/")
@@ -250,12 +250,12 @@ func (c *IllustCache) fetchImg(client *http.Client, url string) (string, error) 
 	// 发送请求
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("请求失败: %w", err)
+		return nil, fmt.Errorf("请求失败: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("下载图片失败: HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("下载图片失败: HTTP %d", resp.StatusCode)
 	}
 
 	// 如果图片 > 20mb 就下载缩略图
@@ -263,17 +263,22 @@ func (c *IllustCache) fetchImg(client *http.Client, url string) (string, error) 
 		return c.fetchImg(client, c.ImageURL)
 	}
 
-	var builder strings.Builder
-	builder.WriteString("base64://")
-	base64Encoder := base64.NewEncoder(base64.StdEncoding, &builder)
-	base64Encoder.Close()
-
-	_, err = io.Copy(base64Encoder, resp.Body)
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return builder.String(), nil
+	/*	var builder strings.Builder
+		builder.WriteString("base64://")
+		base64Encoder := base64.NewEncoder(base64.StdEncoding, &builder)
+		base64Encoder.Close()
+
+		_, err = io.Copy(base64Encoder, resp.Body)
+		if err != nil {
+			return "", err
+		}*/
+
+	return data, nil
 }
 
 // RefreshPixivAccessToken 用 refresh_token 刷新 access_token

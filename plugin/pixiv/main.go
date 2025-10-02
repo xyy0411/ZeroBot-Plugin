@@ -133,7 +133,7 @@ func init() {
 				"\n收藏数:", illust.Bookmarks,
 				"\n预览数:", illust.TotalView,
 				"\n发布时间:", illust.CreateDate,
-			), message.Image(img))
+			), message.ImageBytes(img))
 			sent := SentImage{
 				GroupID: ctx.Event.GroupID,
 				PID:     illust.PID,
