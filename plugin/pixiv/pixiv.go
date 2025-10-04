@@ -1,14 +1,12 @@
 package pixiv
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/jinzhu/gorm"
 	"io"
 	"net/http"
-	"net/url"
 )
 
 const maxImageSize = 20 << 20
@@ -186,6 +184,11 @@ func FetchPixivIllusts(keyword string, isR18Req bool, limit int) ([]IllustSummar
 func GetIllustsByKeyword(keyword string, r18Req bool, limit int, gid int64) ([]IllustCache, error) {
 	var illustInfos []IllustCache
 
+	// 设置一个保底的关键词
+	if keyword == "" && r18Req {
+		keyword = "R-18"
+	}
+
 	// 第一步：先查缓存（排除掉已发送的）
 	sub := db.Model(&SentImage{}).
 		Where("group_id = ?", gid).
@@ -304,39 +307,6 @@ func (c *IllustCache) fetchImg(client *http.Client, url string) ([]byte, error) 
 		}*/
 
 	return data, nil
-}
-
-// RefreshPixivAccessToken 用 refresh_token 刷新 access_token
-func RefreshPixivAccessToken(refreshToken string) (*TokenStore, error) {
-	endpoint := "https://oauth.secure.pixiv.net/auth/token"
-
-	data := url.Values{}
-	data.Set("grant_type", "refresh_token")
-	data.Set("client_id", "MOBrBDS8blbauoSck0ZfDbtuzpyT")
-	data.Set("client_secret", "lsACyCD94FhDUtGTXi3QzcFE2uU1hqtDaKeqrdwj")
-	data.Set("refresh_token", refreshToken)
-
-	req, _ := http.NewRequest("POST", endpoint, bytes.NewBufferString(data.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("User-Agent", "PixivAndroidApp/5.0.234 (Android 11; Pixel 5)")
-
-	client := NewClient()
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("刷新失败: %s\nbody: %s", resp.Status, string(body))
-	}
-
-	var tokenRes TokenStore
-	if err := json.Unmarshal(body, &tokenRes); err != nil {
-		return nil, err
-	}
-	return &tokenRes, nil
 }
 
 func SearchPixivIllustrations(accessToken, url string) (*RootEntity, error) {

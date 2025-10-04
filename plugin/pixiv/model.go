@@ -1,8 +1,13 @@
 package pixiv
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	log "github.com/sirupsen/logrus"
+	"io"
+	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -45,21 +50,54 @@ func NewTokenStore() *TokenStore {
 func (t *TokenStore) GetAccessToken() (string, error) {
 
 	// 1. access token 还有效，直接用
-	if time.Now().After(t.ExpiresAt) && t.AccessToken != "" {
+	if time.Now().Before(t.ExpiresAt) && t.AccessToken != "" {
 		fmt.Println("access_token is expired")
 		return t.AccessToken, nil
 	}
 
 	// 2. 否则用 refresh token 刷新
-	newToken, err := RefreshPixivAccessToken(t.RefreshToken)
+	err := t.RefreshPixivAccessToken()
 	if err != nil {
 		return "", err
 	}
 
-	t.AccessToken = newToken.AccessToken
-	t.ExpiresAt = time.Now().Add(time.Duration(t.ExpiresIn) * time.Second)
-	fmt.Println("AccessToken:", t.AccessToken)
-	return newToken.AccessToken, nil
+	t.ExpiresAt = time.Now().Add(time.Duration(t.ExpiresIn/2) * time.Second)
+	return t.AccessToken, nil
+}
+
+// RefreshPixivAccessToken 用 refresh_token 刷新 access_token
+func (t *TokenStore) RefreshPixivAccessToken() error {
+	endpoint := "https://oauth.secure.pixiv.net/auth/token"
+
+	data := url.Values{}
+	data.Set("grant_type", "refresh_token")
+	data.Set("client_id", "MOBrBDS8blbauoSck0ZfDbtuzpyT")
+	data.Set("client_secret", "lsACyCD94FhDUtGTXi3QzcFE2uU1hqtDaKeqrdwj")
+	data.Set("refresh_token", t.RefreshToken)
+
+	req, _ := http.NewRequest("POST", endpoint, bytes.NewBufferString(data.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("User-Agent", "PixivAndroidApp/5.0.234 (Android 11; Pixel 5)")
+
+	client := NewClient()
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("刷新失败: %s\nbody: %s", resp.Status, string(body))
+	}
+
+	var tokenRes TokenStore
+	err = json.Unmarshal(body, &tokenRes)
+
+	t.AccessToken = tokenRes.AccessToken
+	t.ExpiresIn = tokenRes.ExpiresIn
+
+	return err
 }
 
 type RootEntity struct {
