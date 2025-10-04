@@ -68,7 +68,6 @@ func BuildPixivSearchURL(keyword string) string {
 	}
 
 	params := url.Values{}
-	keyword += " 1000users入り"
 	params.Set("word", keyword)
 	params.Set("sort", "popular_desc")
 	// 严格匹配 exact_match_for_tags
@@ -79,17 +78,17 @@ func BuildPixivSearchURL(keyword string) string {
 	//params.Set("offset", fmt.Sprintf("%d", offset))
 	params.Set("order", "date_desc")
 	params.Set("filter", "for_ios")
+	// params.Set("bookmark_num_min", "1000")
 
 	baseURL.RawQuery = params.Encode()
 	return baseURL.String()
 }
 
 // ToIllustSummary 提取有用的字段
-func ToIllustSummary(illust IllustsEntity, orignalUrl string) IllustSummary {
+func ToIllustSummary(illust IllustsEntity, originalURL string) IllustSummary {
 	// 提取标签名称
 	var tags []string
 	for _, tag := range illust.Tags {
-
 		tags = append(tags, tag.Name)
 	}
 
@@ -100,7 +99,7 @@ func ToIllustSummary(illust IllustsEntity, orignalUrl string) IllustSummary {
 		ImageUrl:       illust.ImageUrls.Medium,
 		AuthorName:     illust.User.Name,
 		AuthorID:       illust.User.Id,
-		OriginalUrl:    orignalUrl,
+		OriginalUrl:    originalURL,
 		Tags:           tags,
 		CreateDate:     illust.CreateDate,
 		PageCount:      illust.PageCount,
@@ -112,10 +111,10 @@ func ToIllustSummary(illust IllustsEntity, orignalUrl string) IllustSummary {
 }
 
 // ToIllustSummaries 批量转换函数
-func ToIllustSummaries(illusts []IllustsEntity, originalUrl string) []IllustSummary {
+func ToIllustSummaries(illusts []IllustsEntity, originalUrl []string) []IllustSummary {
 	summaries := make([]IllustSummary, len(illusts))
 	for i, illust := range illusts {
-		summaries[i] = ToIllustSummary(illust, originalUrl)
+		summaries[i] = ToIllustSummary(illust, originalUrl[i])
 	}
 	return summaries
 }

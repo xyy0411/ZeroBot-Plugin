@@ -13,6 +13,104 @@ import (
 
 const maxImageSize = 20 << 20
 
+func FetchPixivRecommend(limit int) ([]IllustCache, error) {
+	firstURL := "https://app-api.pixiv.net/v1/illust/recommended?filter=for_ios"
+	illustSummaries, err := fetchPixivCommon(firstURL, limit, nil, nil) // 不做R18过滤，不排缓存
+	if err != nil {
+		return nil, err
+	}
+	var result []IllustCache
+
+	for _, r := range illustSummaries {
+		Illust := IllustCache{
+			PID:         r.PID,
+			Keyword:     r.Tags[0],
+			Title:       r.Title,
+			AuthorName:  r.AuthorName,
+			ImageURL:    r.ImageUrl,
+			OriginalURL: r.OriginalUrl,
+			Bookmarks:   r.TotalBookmarks,
+			TotalView:   r.TotalView,
+			CreateDate:  r.CreateDate,
+			PageCount:   r.PageCount,
+			R18:         r.R18,
+		}
+		result = append(result, Illust)
+		_ = db.Create(&Illust).Error
+	}
+	return result, nil
+}
+
+func fetchPixivCommon(
+	firstURL string,
+	limit int,
+	isR18Req *bool, // nil 表示不做R18过滤，true/false 表示要求
+	excludeCache map[int64]struct{}, // nil表示不做缓存排除
+) ([]IllustSummary, error) {
+	accessToken, err := tokenResp.GetAccessToken()
+	if err != nil {
+		return nil, err
+	}
+
+	results := make([]IllustSummary, 0, limit)
+	seen := make(map[int64]struct{})
+	url := firstURL
+
+	for len(results) < limit && url != "" {
+		rawData, err := SearchPixivIllustrations(accessToken, url)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, illust := range rawData.Illusts {
+			if illust.TotalBookmarks < 1000 {
+				continue
+			}
+
+			if _, ok := seen[illust.Id]; ok {
+				continue
+			}
+			if excludeCache != nil {
+				if _, ok := excludeCache[illust.Id]; ok {
+					continue
+				}
+			}
+
+			originalUrl := illust.MetaSinglePage.OriginalImageUrl
+			if originalUrl == "" && len(illust.MetaPages) > 0 {
+				originalUrl = illust.MetaPages[0].ImageURLs.Original
+			}
+
+			summary := ToIllustSummary(illust, originalUrl)
+
+			// ✅ R18 过滤
+			if isR18Req != nil {
+				summary.R18 = illust.XRestrict == 1
+				for _, tag := range illust.Tags {
+					if isR18(tag.Name) {
+						summary.R18 = true
+						break
+					}
+				}
+				if summary.R18 != *isR18Req {
+					continue
+				}
+			}
+
+			results = append(results, summary)
+			seen[illust.Id] = struct{}{}
+
+			if len(results) >= limit {
+				break
+			}
+		}
+
+		url = rawData.NextUrl
+	}
+
+	return results, nil
+}
+
 // BackgroundCacheFiller 异步补充指定关键词的 Pixiv 图片缓存
 func BackgroundCacheFiller(keyword string, minCache int, r18Req bool, fetchCount int, gid int64) {
 	go func() {
@@ -67,17 +165,9 @@ func BackgroundCacheFiller(keyword string, minCache int, r18Req bool, fetchCount
 
 // FetchPixivIllusts 拉取 Pixiv 插画并缓存
 func FetchPixivIllusts(keyword string, isR18Req bool, limit int) ([]IllustSummary, error) {
-	seen := make(map[int64]struct{})
-	results := make([]IllustSummary, 0, limit)
-
-	accessToken, err := tokenResp.GetAccessToken()
-	if err != nil {
-		return nil, err
-	}
-
 	// 只取当前 keyword 的缓存
 	var cachedIds []int64
-	if err = db.Model(&IllustCache{}).
+	if err := db.Model(&IllustCache{}).
 		Where("keyword = ?", keyword).
 		Pluck("pid", &cachedIds).Error; err != nil {
 		return nil, err
@@ -88,63 +178,8 @@ func FetchPixivIllusts(keyword string, isR18Req bool, limit int) ([]IllustSummar
 		cachedMap[id] = struct{}{}
 	}
 
-	nextURL := BuildPixivSearchURL(keyword)
-	for len(results) <= limit && nextURL != "" {
-		fmt.Println("翻页")
-		rawData, err := SearchPixivIllustrations(accessToken, nextURL)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, illust := range rawData.Illusts {
-			// 可能会在下一页出现相同的插画这里也要跳
-			if _, ok := seen[illust.Id]; ok {
-				continue
-			}
-			// 缓存有就跳
-			if _, ok := cachedMap[illust.Id]; ok {
-				continue
-			}
-
-			originalUrl := ""
-			// 判断作品是不是有多张图如果是多张就取第一张为原图
-			if illust.MetaSinglePage.OriginalImageUrl == "" {
-				originalUrl = illust.MetaPages[0].ImageURLs.Original
-			} else {
-				originalUrl = illust.MetaSinglePage.OriginalImageUrl
-			}
-
-			illustSummary := ToIllustSummary(illust, originalUrl)
-
-			// 判断 R18
-			if illust.XRestrict == 1 {
-				illustSummary.R18 = true
-			} else {
-				for _, tag := range illust.Tags {
-					if isR18(tag.Name) {
-						illustSummary.R18 = true
-						break
-					}
-				}
-			}
-
-			// 如果插画的 R18 状态和请求的不一致，就跳过
-			if illustSummary.R18 != isR18Req {
-				continue
-			}
-
-			results = append(results, illustSummary)
-			seen[illust.Id] = struct{}{}
-
-			if len(results) >= limit {
-				break
-			}
-		}
-		fmt.Println(rawData.NextUrl)
-		nextURL = rawData.NextUrl
-	}
-
-	return results, nil
+	firstURL := BuildPixivSearchURL(keyword)
+	return fetchPixivCommon(firstURL, limit, &isR18Req, cachedMap)
 }
 
 // GetIllustsByKeyword 根据关键词获取插画（优先缓存，没有则从Pixiv拉取）
@@ -178,7 +213,7 @@ func GetIllustsByKeyword(keyword string, r18Req bool, limit int, gid int64) ([]I
 		return illustInfos, nil
 	}
 
-	// 判断还需要几张图片
+	// 计算还需要几张图片
 	if len(illustInfos) > 0 && len(illustInfos) < limit {
 		limit -= len(illustInfos)
 	}
@@ -208,16 +243,6 @@ func GetIllustsByKeyword(keyword string, r18Req bool, limit int, gid int64) ([]I
 	}
 
 	fmt.Println("预计发送", len(illustInfos), "张图片")
-
-	/*	sub2 := db.Model(&SentImage{}).Select("pid").SubQuery()
-		err = db.
-			Where("keyword = ?", keyword).
-			Where("pid NOT IN (?)", sub2).
-			Limit(limit).
-			Find(&illustInfos).Error
-		if err != nil {
-			return nil, err
-		}*/
 
 	return illustInfos, nil
 }
@@ -340,6 +365,7 @@ func SearchPixivIllustrations(accessToken, url string) (*RootEntity, error) {
 }
 
 func SavePixivImgToDB(keyword string, illustInfos *[]IllustCache, pixivResults []IllustSummary) {
+
 	existPID := make(map[int64]struct{})
 	for _, r := range pixivResults {
 		if _, exists := existPID[r.PID]; exists {

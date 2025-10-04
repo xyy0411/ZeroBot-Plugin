@@ -25,7 +25,7 @@ var defaultKeyword = []string{"萝莉", "御姐", "妹妹", "姐姐"}
 var defaultClient *http.Client
 
 func init() {
-	proxyURL, err := url.Parse("http://127.0.0.1:7897")
+	proxyURL, err := url.Parse("http://127.0.0.1:10809")
 	if err != nil {
 		log.Print("连接代理错误:", err)
 	}
@@ -59,6 +59,7 @@ func init() {
 	sqlDB.SetMaxIdleConns(5)            // 最多保留 5 个空闲连接
 	sqlDB.SetConnMaxLifetime(time.Hour) // 一个连接最多用 1 小时
 
+	tokenResp = NewTokenStore()
 	/*	go func() {
 		// 使用 6060 端口
 		log.Println("Starting pprof server on http://localhost:6060")
@@ -87,6 +88,28 @@ func init() {
 		}
 
 		ctx.SendChain(message.Text("Pixiv Token: ", token))
+	})
+
+	engine.OnFullMatchGroup([]string{"每日色图"}).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+		illusts, err := FetchPixivRecommend(1)
+		if err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+		img, err := illusts[0].FetchPixivImage()
+		if err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+		illust := illusts[0]
+		ctx.SendChain(message.Text(
+			"PID:", illust.PID,
+			"\n标题:", illust.Title,
+			"\n画师:", illust.AuthorName,
+			"\n收藏数:", illust.Bookmarks,
+			"\n预览数:", illust.TotalView,
+			"\n发布时间:", illust.CreateDate,
+		), message.ImageBytes(img))
 	})
 
 	engine.OnRegex(`^(\d+)?张?色图\s*(.+)?`).SetBlock(true).Handle(func(ctx *zero.Ctx) {

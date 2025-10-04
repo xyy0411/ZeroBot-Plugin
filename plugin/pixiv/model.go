@@ -2,6 +2,7 @@ package pixiv
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"time"
 )
 
@@ -32,22 +33,21 @@ type IllustSummary struct {
 }
 
 func NewTokenStore() *TokenStore {
-	return &TokenStore{}
+	var t1 RefreshToken
+	if err := db.First(&t1).Error; err != nil {
+		log.Error("Error fetching token store from database")
+	}
+	return &TokenStore{
+		RefreshToken: t1.Token,
+	}
 }
 
 func (t *TokenStore) GetAccessToken() (string, error) {
 
 	// 1. access token 还有效，直接用
 	if time.Now().After(t.ExpiresAt) && t.AccessToken != "" {
+		fmt.Println("access_token is expired")
 		return t.AccessToken, nil
-	}
-
-	if t.AccessToken == "" {
-		var t1 RefreshToken
-		if err := db.First(&t1).Error; err != nil {
-			return "", err
-		}
-		t.RefreshToken = t1.Token
 	}
 
 	// 2. 否则用 refresh token 刷新

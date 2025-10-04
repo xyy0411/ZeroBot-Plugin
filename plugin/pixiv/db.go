@@ -38,6 +38,6 @@ type RefreshToken struct {
 }
 
 var (
-	tokenResp = NewTokenStore()
+	tokenResp *TokenStore
 	db        = &gorm.DB{}
 )
