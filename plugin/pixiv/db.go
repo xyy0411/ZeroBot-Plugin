@@ -9,6 +9,7 @@ type IllustCache struct {
 	gorm.Model
 
 	PID         int64  `gorm:"unique_index:idx_keyword_pid;not null;column:pid"` // Pixiv 作品 ID
+	UID         int64  `gorm:"default:0;not null;column:uid"`                    // 插画作者的id
 	Keyword     string `gorm:"unique_index:idx_keyword_pid;type:varchar(255)"`   // 搜索关键词
 	Title       string `gorm:"type:varchar(255)"`                                // 标题
 	AuthorName  string `gorm:"type:varchar(255)"`                                // 用户名

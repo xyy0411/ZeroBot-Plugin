@@ -94,6 +94,7 @@ func ToIllustSummary(illust IllustsEntity, originalURL string) IllustSummary {
 
 	return IllustSummary{
 		PID:            illust.Id,
+		UID:            illust.User.Id,
 		Title:          illust.Title,
 		Type:           illust.Type,
 		ImageUrl:       illust.ImageUrls.Medium,

@@ -73,11 +73,10 @@ func init() {
 	engine := control.AutoRegister(&ctrl.Options[*zero.Ctx]{
 		DisableOnDefault: false,
 		Brief:            "Pixiv 图片搜索",
-		Help:             "-[x张]色图 [关键词]\n []为可忽略项\n可添加多个关键词每个关键词用空格隔开\n默认不发R-18如果要发就加一个R-18关键词",
+		Help:             "- [x张]色图 [关键词]\n- 每日色图\n- [x张]画师[画师的uid] \n- p站搜图[插画pid] \n[]为可忽略项\n可添加多个关键词每个关键词用空格隔开\n默认不发R-18如果要发就加一个R-18关键词",
 	}).ApplySingle(ctxext.NewGroupSingle("别着急，都会有的"))
 
 	engine.OnRegex(`^设置p站token (.*)`, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
-		ctx.SendChain(message.Text("1"))
 		token := ctx.State["regex_matched"].([]string)[1]
 		var refreshToken RefreshToken
 		refreshToken.User = ctx.Event.UserID
@@ -88,6 +87,81 @@ func init() {
 		}
 
 		ctx.SendChain(message.Text("Pixiv Token: ", token))
+	})
+
+	engine.OnRegex(`^p站搜图(\d+)`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+		rawPID := ctx.State["regex_matched"].([]string)[1]
+		pid, err := strconv.ParseInt(rawPID, 10, 64)
+		if err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+		illust, err := FetchPixivByPID(pid)
+		if err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+		img, err1 := illust.FetchPixivImage(true)
+		if err1 != nil {
+			ctx.SendChain(message.Text("ERROR: ", err1))
+			return
+		}
+		fmt.Println("获取", illust.PID, "成功，准备发送！", float64(len(img))/1024/1024, "mb")
+		ctx.SendChain(message.Text(
+			"PID:", illust.PID,
+			"\n标题:", illust.Title,
+			"\n画师:", illust.AuthorName,
+			"\n收藏数:", illust.Bookmarks,
+			"\n预览数:", illust.TotalView,
+			"\n发布时间:", illust.CreateDate,
+		), message.ImageBytes(img))
+	})
+
+	engine.OnRegex(`^(\d+)?张?画师(\d+)`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+		limit := ctx.State["regex_matched"].([]string)[1]
+		if limit == "" {
+			limit = "1"
+		}
+		rawUid := ctx.State["regex_matched"].([]string)[2]
+		limitInt, err := strconv.Atoi(limit)
+		if err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+		uid, err := strconv.ParseInt(rawUid, 10, 64)
+		if err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+		illustInfos, err := FetchPixivByUser(uid, limitInt)
+		if err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+		for _, illust := range illustInfos {
+			img, err1 := illust.FetchPixivImage()
+			if err1 != nil {
+				ctx.SendChain(message.Text("ERROR: ", err1))
+				continue
+			}
+			fmt.Println("获取", illust.PID, "成功，准备发送！", float64(len(img))/1024/1024, "mb")
+			ctx.SendChain(message.Text(
+				"PID:", illust.PID,
+				"\n标题:", illust.Title,
+				"\n画师:", illust.AuthorName,
+				"\n收藏数:", illust.Bookmarks,
+				"\n预览数:", illust.TotalView,
+				"\n发布时间:", illust.CreateDate,
+			), message.ImageBytes(img))
+			sent := SentImage{
+				GroupID: ctx.Event.GroupID,
+				PID:     illust.PID,
+			}
+
+			if err = db.Save(&sent).Error; err != nil {
+				ctx.SendChain(message.Text("ERROR: ", err))
+			}
+		}
 	})
 
 	engine.OnFullMatchGroup([]string{"每日色图"}).SetBlock(true).Handle(func(ctx *zero.Ctx) {

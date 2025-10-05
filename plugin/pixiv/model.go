@@ -21,6 +21,7 @@ type TokenStore struct {
 
 type IllustSummary struct {
 	PID            int64    // 作品ID
+	UID            int64    // 作者pid
 	Title          string   // 作品标题
 	Type           string   // 作品类型
 	OriginalUrl    string   // 原图url
@@ -40,7 +41,7 @@ type IllustSummary struct {
 func NewTokenStore() *TokenStore {
 	var t1 RefreshToken
 	if err := db.First(&t1).Error; err != nil {
-		log.Error("Error fetching token store from database")
+		log.Warning("Fail fetching token store from database")
 	}
 	return &TokenStore{
 		RefreshToken: t1.Token,
@@ -102,6 +103,7 @@ func (t *TokenStore) RefreshPixivAccessToken() error {
 
 type RootEntity struct {
 	Illusts         []IllustsEntity `json:"illusts"`
+	Illust          *IllustsEntity  `json:"illust"`
 	NextUrl         string          `json:"next_url"`
 	SearchSpanLimit int64           `json:"search_span_limit"`
 	ShowAi          bool            `json:"show_ai"`
