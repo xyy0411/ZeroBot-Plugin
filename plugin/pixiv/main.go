@@ -55,9 +55,9 @@ func init() {
 		panic(err)
 	}
 	sqlDB := db.DB()
-	sqlDB.SetMaxOpenConns(10)           // 最多 10 个连接
-	sqlDB.SetMaxIdleConns(5)            // 最多保留 5 个空闲连接
-	sqlDB.SetConnMaxLifetime(time.Hour) // 一个连接最多用 1 小时
+	sqlDB.SetMaxOpenConns(10)
+	sqlDB.SetMaxIdleConns(5)
+	sqlDB.SetConnMaxLifetime(time.Hour)
 
 	tokenResp = NewTokenStore()
 	/*	go func() {

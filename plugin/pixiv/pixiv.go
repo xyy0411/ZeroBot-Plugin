@@ -70,7 +70,11 @@ func fetchPixivCommon(
 	limit int,
 	isR18Req *bool, // nil 表示不做R18过滤，true/false 表示要求
 	excludeCache map[int64]struct{}, // nil表示不做缓存排除
+	keywords ...string,
 ) ([]IllustCache, error) {
+
+	keyword := ""
+
 	accessToken, err := tokenResp.GetAccessToken()
 	if err != nil {
 		return nil, err
@@ -120,10 +124,17 @@ func fetchPixivCommon(
 					continue
 				}
 			}
+
+			if len(keywords) > 0 {
+				keyword = keywords[0]
+			} else {
+				keyword = summary.Tags[0]
+			}
+
 			Illust := IllustCache{
 				PID:         summary.PID,
 				UID:         summary.UID,
-				Keyword:     summary.Tags[0],
+				Keyword:     keyword,
 				Title:       summary.Title,
 				AuthorName:  summary.AuthorName,
 				ImageURL:    summary.ImageUrl,
@@ -215,7 +226,7 @@ func FetchPixivIllusts(keyword string, isR18Req bool, limit int) ([]IllustCache,
 	}
 
 	firstURL := BuildPixivSearchURL(keyword)
-	return fetchPixivCommon(firstURL, limit, &isR18Req, cachedMap)
+	return fetchPixivCommon(firstURL, limit, &isR18Req, cachedMap, keyword)
 }
 
 // GetIllustsByKeyword 根据关键词获取插画（优先缓存，没有则从Pixiv拉取）
@@ -318,7 +329,6 @@ func (c *IllustCache) fetchImg(url string, preferOriginal bool) ([]byte, error) 
 	req.Header.Set("Referer", "https://www.pixiv.net/")
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
 
-	// 发送请请求
 	client := NewClient()
 	resp, err := client.Do(req)
 	defer resp.Body.Close()
