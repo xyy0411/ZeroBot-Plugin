@@ -73,7 +73,7 @@ func init() {
 	engine := control.AutoRegister(&ctrl.Options[*zero.Ctx]{
 		DisableOnDefault: false,
 		Brief:            "Pixiv 图片搜索",
-		Help:             "- [x张]色图 [关键词]\n- 每日色图\n- [x张]画师[画师的uid] \n- p站搜图[插画pid] \n[]为可忽略项\n可添加多个关键词每个关键词用空格隔开\n默认不发R-18如果要发就加一个R-18关键词",
+		Help:             "- [x张]涩图 [关键词]\n- 每日涩图\n- [x张]画师[画师的uid] \n- p站搜图[插画pid] \n[]为可忽略项\n可添加多个关键词每个关键词用空格隔开\n默认不发R-18如果要发就加一个R-18关键词",
 	}).ApplySingle(ctxext.NewGroupSingle("别着急，都会有的"))
 
 	engine.OnRegex(`^设置p站token (.*)`, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
@@ -164,7 +164,7 @@ func init() {
 		}
 	})
 
-	engine.OnFullMatchGroup([]string{"每日色图"}).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+	engine.OnRegex(`^每日[色|涩|瑟]图$`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		illusts, err := FetchPixivRecommend(1)
 		if err != nil {
 			ctx.SendChain(message.Text("ERROR: ", err))
@@ -186,7 +186,7 @@ func init() {
 		), message.ImageBytes(img))
 	})
 
-	engine.OnRegex(`^(\d+)?张?色图\s*(.+)?`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+	engine.OnRegex(`^(\d+)?张?[色|瑟|涩]图\s*(.+)?`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		limit := ctx.State["regex_matched"].([]string)[1]
 		keyword := ctx.State["regex_matched"].([]string)[2]
 
