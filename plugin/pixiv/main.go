@@ -133,7 +133,7 @@ func init() {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
 		}
-		illustInfos, err := FetchPixivByUser(uid, limitInt)
+		illustInfos, err := FetchPixivByUser(uid, ctx.Event.GroupID, limitInt)
 		if err != nil {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return

@@ -50,10 +50,20 @@ func FetchPixivByPID(pid int64) (*IllustCache, error) {
 	return &Illust, nil
 }
 
-func FetchPixivByUser(uid int64, limit int) ([]IllustCache, error) {
+func FetchPixivByUser(uid, gid int64, limit int) ([]IllustCache, error) {
 	url := fmt.Sprintf("https://app-api.pixiv.net/v1/user/illusts?user_id=%d&type=illust", uid)
 
-	return fetchPixivCommon(url, limit, nil, nil)
+	excludeCache := make(map[int64]struct{})
+
+	var pids []int64
+	err := db.Model(&SentImage{}).Where("group_id = ?", gid).Pluck("pid", &pids).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, pid := range pids {
+		excludeCache[pid] = struct{}{}
+	}
+	return fetchPixivCommon(url, limit, nil, excludeCache)
 }
 
 func FetchPixivRecommend(limit int) ([]IllustCache, error) {
@@ -113,13 +123,17 @@ func fetchPixivCommon(
 
 			// ✅ R18 过滤
 			if isR18Req != nil {
-				summary.R18 = raw.XRestrict == 1
-				for _, tag := range summary.Tags {
-					if isR18(tag) {
-						summary.R18 = true
-						break
+				hasR18Tag := func() bool {
+					for _, tag := range summary.Tags {
+						if isR18(tag) {
+							return true
+						}
 					}
+					return false
 				}
+
+				summary.R18 = (raw.XRestrict == 1) || hasR18Tag()
+
 				if summary.R18 != *isR18Req {
 					continue
 				}
