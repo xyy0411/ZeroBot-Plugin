@@ -26,7 +26,6 @@ func FetchPixivByPID(pid int64) (*IllustCache, error) {
 	}
 	illust := *rawData.Illust
 
-	// 构造图片 URL
 	originalURL := illust.MetaSinglePage.OriginalImageUrl
 	if originalURL == "" && len(illust.MetaPages) > 0 {
 		originalURL = illust.MetaPages[0].ImageURLs.Original
@@ -63,7 +62,8 @@ func FetchPixivByUser(uid, gid int64, limit int) ([]IllustCache, error) {
 	for _, pid := range pids {
 		excludeCache[pid] = struct{}{}
 	}
-	return fetchPixivCommon(url, limit, nil, excludeCache)
+	isR18Req := true
+	return fetchPixivCommon(url, limit, &isR18Req, excludeCache)
 }
 
 func FetchPixivRecommend(limit int) ([]IllustCache, error) {
