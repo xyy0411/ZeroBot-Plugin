@@ -267,7 +267,7 @@ func GetIllustsByKeyword(keyword string, r18Req bool, limit int, gid int64) ([]I
 
 	// 计算还需要几张图片
 	needed := 0
-	if len(illustInfos) > 0 && len(illustInfos) < limit {
+	if len(illustInfos) < limit {
 		needed = limit - len(illustInfos)
 	}
 
