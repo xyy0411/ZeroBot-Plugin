@@ -1,6 +1,8 @@
 package pixiv
 
 import (
+	"errors"
+	"github.com/jinzhu/gorm"
 	"net/http"
 	"net/url"
 	"strings"
@@ -8,6 +10,53 @@ import (
 
 func NewClient() *http.Client {
 	return defaultClient
+}
+
+func CountIllustsSmart(gid int64, keyword string, r18Req bool) (int64, error) {
+	var count int64
+
+	query := buildIllustQuery(gid, keyword, r18Req)
+	err := query.Count(&count).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, err
+	}
+
+	return count, nil
+}
+
+// FindIllustsSmart 查找缓存（先 keyword，再 tags）
+// - keyword: 用户输入关键词
+// - r18Req: 是否允许 R18
+// - limit: 需要返回的数量
+// - gid: 用于排除已发送的 group id（SentImage 表）
+// 返回：尽量返回最多 limit 条结果
+// buildIllustQuery 封装基础查询逻辑（keyword + tags + 已发送过滤 + R18过滤）
+func FindIllustsSmart(gid int64, keyword string, limit int, r18Req bool) ([]IllustCache, error) {
+	var illusts []IllustCache
+
+	query := buildIllustQuery(gid, keyword, r18Req)
+	err := query.Limit(limit).Find(&illusts).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	return illusts, nil
+}
+
+// buildIllustQuery 封装基础查询逻辑（keyword + tags + 已发送过滤 + R18过滤）
+func buildIllustQuery(gid int64, keyword string, r18Req bool) *gorm.DB {
+	sub := db.Model(&SentImage{}).
+		Where("group_id = ?", gid).
+		Select("pid").
+		SubQuery()
+
+	query := db.Model(&IllustCache{}).
+		Where("pid NOT IN (?)", sub).
+		Where("(keyword = ?) OR (keyword <> ? AND tags LIKE ?)", keyword, keyword, "%"+keyword+"%")
+
+	if !r18Req {
+		query = query.Where("r18 = ?", false)
+	}
+	return query
 }
 
 func removeR18Keywords(keyword string) string {

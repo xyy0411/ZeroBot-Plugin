@@ -2,9 +2,7 @@ package pixiv
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"github.com/jinzhu/gorm"
 	"io"
 	"net/http"
 )
@@ -159,6 +157,12 @@ func fetchPixivCommon(
 				PageCount:   summary.PageCount,
 				R18:         summary.R18,
 			}
+
+			Illust.Tags, err = json.Marshal(summary.Tags)
+			if err != nil {
+				fmt.Println(err)
+			}
+
 			_ = db.Create(&Illust).Error
 
 			results = append(results, Illust)
@@ -179,27 +183,9 @@ func fetchPixivCommon(
 func BackgroundCacheFiller(keyword string, minCache int, r18Req bool, fetchCount int, gid int64) {
 	go func() {
 
-		var count int64
-
-		// 第一步：先查缓存（排除掉已发送的）
-		sub := db.Model(&SentImage{}).
-			Where("group_id = ?", gid).
-			Select("pid").
-			SubQuery()
-
-		query := db.
-			Where("keyword = ?", keyword).
-			Where("pid NOT IN (?)", sub)
-
-		// 添加R-18过滤条件
-		if !r18Req {
-			query = query.Where("r18 = ?", false)
-		}
-
-		err := query.Model(&IllustCache{}).Count(&count).Error
-
-		if !errors.Is(err, gorm.ErrRecordNotFound) && err != nil {
-			fmt.Println("统计缓存数量失败:", err)
+		count, err := CountIllustsSmart(gid, keyword, r18Req)
+		if err != nil {
+			fmt.Println("查询数据库发生错误:", err)
 			return
 		}
 
@@ -235,8 +221,10 @@ func FetchPixivIllusts(keyword string, isR18Req bool, limit int) ([]IllustCache,
 	}
 
 	cachedMap := make(map[int64]struct{}, len(cachedIds))
-	for _, id := range cachedIds {
-		cachedMap[id] = struct{}{}
+	if len(cachedIds) > 0 {
+		for _, id := range cachedIds {
+			cachedMap[id] = struct{}{}
+		}
 	}
 
 	firstURL := BuildPixivSearchURL(keyword)
@@ -245,32 +233,14 @@ func FetchPixivIllusts(keyword string, isR18Req bool, limit int) ([]IllustCache,
 
 // GetIllustsByKeyword 根据关键词获取插画（优先缓存，没有则从Pixiv拉取）
 func GetIllustsByKeyword(keyword string, r18Req bool, limit int, gid int64) ([]IllustCache, error) {
-	var illustInfos []IllustCache
 
 	// 设置一个保底的关键词
 	if keyword == "" && r18Req {
 		keyword = "R-18"
 	}
 
-	// 第一步：先查缓存（排除掉已发送的）
-	sub := db.Model(&SentImage{}).
-		Where("group_id = ?", gid).
-		Select("pid").
-		SubQuery()
-
-	query := db.
-		Where("keyword = ?", keyword).
-		Where("pid NOT IN (?)", sub)
-
-	// 添加R-18过滤条件
-	if !r18Req {
-		query = query.Where("r18 = ?", false)
-		fmt.Println("过滤18+")
-	}
-
-	err := query.Limit(limit).Find(&illustInfos).Error
-
-	if !errors.Is(gorm.ErrRecordNotFound, err) && err != nil {
+	illustInfos, err := FindIllustsSmart(gid, keyword, limit, r18Req)
+	if err != nil {
 		return nil, err
 	}
 
@@ -315,6 +285,11 @@ func GetIllustsByKeyword(keyword string, r18Req bool, limit int, gid int64) ([]I
 
 func (c *IllustCache) FetchPixivImage(preferOriginal ...bool) ([]byte, error) {
 	fmt.Println("下载", c.PID)
+
+	if c == nil {
+		fmt.Println("FetchPixivImage called on nil IllustCache")
+		return nil, nil
+	}
 
 	preferOriginalFlag := false
 
