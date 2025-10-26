@@ -13,7 +13,7 @@ import (
 	"github.com/wdvxdr1123/ZeroBot/message"
 	"math/rand"
 	"net/http"
-	_ "net/http/pprof"
+	// _ "net/http/pprof"
 	"net/url"
 	"os"
 	"strconv"
@@ -35,7 +35,7 @@ func init() {
 			TLSClientConfig: &tls.Config{MaxVersion: tls.VersionTLS13},
 			Proxy:           http.ProxyURL(proxyURL),
 		},
-		Timeout: time.Second * 25,
+		Timeout: time.Minute,
 	}
 }
 
