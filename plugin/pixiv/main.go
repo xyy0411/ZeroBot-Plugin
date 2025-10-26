@@ -145,14 +145,17 @@ func init() {
 				continue
 			}
 			fmt.Println("获取", illust.PID, "成功，准备发送！", float64(len(img))/1024/1024, "mb")
-			ctx.SendChain(message.Text(
+			if msgID := ctx.SendChain(message.Text(
 				"PID:", illust.PID,
 				"\n标题:", illust.Title,
 				"\n画师:", illust.AuthorName,
 				"\n收藏数:", illust.Bookmarks,
 				"\n预览数:", illust.TotalView,
 				"\n发布时间:", illust.CreateDate,
-			), message.ImageBytes(img))
+			), message.ImageBytes(img)); msgID.ID() == 0 {
+				ctx.SendChain(message.Text("图片发送失败"))
+				continue
+			}
 			sent := SentImage{
 				GroupID: ctx.Event.GroupID,
 				PID:     illust.PID,
@@ -209,7 +212,7 @@ func init() {
 			return
 		}
 
-		r18Req := isR18(keyword)                   // 是否用户要求 R-18
+		r18Req := isR18(keyword)                   // 是否要求 R-18
 		cleanKeyword := removeR18Keywords(keyword) // 去掉 R-18 关键词
 
 		illusts, err := GetIllustsByKeyword(cleanKeyword, r18Req, limitInt, ctx.Event.GroupID)
@@ -225,14 +228,16 @@ func init() {
 				continue
 			}
 			fmt.Println("获取", illust.PID, "成功，准备发送！", float64(len(img))/1024/1024, "mb")
-			ctx.SendChain(message.Text(
+			if msgID := ctx.SendChain(message.Text(
 				"PID:", illust.PID,
 				"\n标题:", illust.Title,
 				"\n画师:", illust.AuthorName,
 				"\n收藏数:", illust.Bookmarks,
 				"\n预览数:", illust.TotalView,
 				"\n发布时间:", illust.CreateDate,
-			), message.ImageBytes(img))
+			), message.ImageBytes(img)); msgID.ID() == 0 {
+				continue
+			}
 			sent := SentImage{
 				GroupID: ctx.Event.GroupID,
 				PID:     illust.PID,
