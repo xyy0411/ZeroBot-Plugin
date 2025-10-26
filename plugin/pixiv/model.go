@@ -19,25 +19,6 @@ type TokenStore struct {
 	ExpiresAt    time.Time `json:"-"`
 }
 
-type IllustSummary struct {
-	PID            int64    // 作品ID
-	UID            int64    // 作者pid
-	Title          string   // 作品标题
-	Type           string   // 作品类型
-	OriginalUrl    string   // 原图url
-	ImageUrl       string   // 主要图片URL
-	AuthorName     string   // 作者名称
-	AuthorID       int64    // 作者ID
-	Tags           []string // 标签列表
-	CreateDate     string   // 创建日期
-	PageCount      int64    // 页数
-	TotalView      int64    // 总浏览数
-	TotalBookmarks int64    // 总收藏数
-	IsBookmarked   bool     // 是否已收藏
-	IsAI           bool     // 是否为AI作品
-	R18            bool     // 是不是18+的
-}
-
 func NewTokenStore() *TokenStore {
 	var t1 RefreshToken
 	if err := db.First(&t1).Error; err != nil {
