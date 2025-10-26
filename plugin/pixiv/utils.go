@@ -1,6 +1,7 @@
 package pixiv
 
 import (
+	"encoding/json"
 	"errors"
 	"github.com/jinzhu/gorm"
 	"net/http"
@@ -69,7 +70,7 @@ func removeR18Keywords(keyword string) string {
 
 	for _, word := range words {
 		lowerWord := strings.ToLower(word)
-		// 只删除完全匹配的R-18关键词
+		// 只删除完全匹配的R-18 关键词
 		if lowerWord != "r-18" && lowerWord != "r18" && lowerWord != "r_18" {
 			result = append(result, word)
 		}
@@ -133,38 +134,47 @@ func BuildPixivSearchURL(keyword string) string {
 	return baseURL.String()
 }
 
-// ToIllustSummary 提取有用的字段
-func ToIllustSummary(illust IllustsEntity, originalURL string) IllustSummary {
-	// 提取标签名称
-	var tags []string
-	for _, tag := range illust.Tags {
-		tags = append(tags, tag.Name)
+func hasR18Tag(tags []string) bool {
+	for _, tag := range tags {
+		if isR18(tag) {
+			return true
+		}
 	}
-
-	return IllustSummary{
-		PID:            illust.Id,
-		UID:            illust.User.Id,
-		Title:          illust.Title,
-		Type:           illust.Type,
-		ImageUrl:       illust.ImageUrls.Medium,
-		AuthorName:     illust.User.Name,
-		AuthorID:       illust.User.Id,
-		OriginalUrl:    originalURL,
-		Tags:           tags,
-		CreateDate:     illust.CreateDate,
-		PageCount:      illust.PageCount,
-		TotalView:      illust.TotalView,
-		TotalBookmarks: illust.TotalBookmarks,
-		IsBookmarked:   illust.IsBookmarked,
-		IsAI:           illust.IllustAiType > 0,
-	}
+	return false
 }
 
-// ToIllustSummaries 批量转换函数
-func ToIllustSummaries(illusts []IllustsEntity, originalUrl []string) []IllustSummary {
-	summaries := make([]IllustSummary, len(illusts))
-	for i, illust := range illusts {
-		summaries[i] = ToIllustSummary(illust, originalUrl[i])
+func convertToIllustCache(raw IllustsEntity) (IllustCache, error) {
+	var tagNames []string
+	for _, tag := range raw.Tags {
+		tagNames = append(tagNames, tag.Name)
 	}
-	return summaries
+
+	jsonTags, err := json.Marshal(tagNames)
+	if err != nil {
+		return IllustCache{}, err
+	}
+
+	illust := IllustCache{
+		PID:        raw.Id,
+		UID:        raw.User.Id,
+		Keyword:    tagNames[0], // 默认为第1个标签后续在其他函数里自定义
+		Title:      raw.Title,
+		AuthorName: raw.User.Name,
+		ImageURL:   raw.ImageUrls.Large,
+		R18:        (raw.XRestrict == 1) || hasR18Tag(tagNames),
+		Bookmarks:  raw.TotalBookmarks,
+		TotalView:  raw.TotalView,
+		CreateDate: raw.CreateDate,
+		PageCount:  raw.PageCount,
+		Tags:       jsonTags,
+	}
+
+	originalImageURL := raw.MetaSinglePage.OriginalImageUrl
+	if originalImageURL == "" && len(raw.MetaPages) > 0 {
+		originalImageURL = raw.MetaPages[0].ImageURLs.Original
+	}
+
+	illust.OriginalURL = originalImageURL
+
+	return illust, nil
 }

@@ -24,27 +24,9 @@ func FetchPixivByPID(pid int64) (*IllustCache, error) {
 	}
 	illust := *rawData.Illust
 
-	originalURL := illust.MetaSinglePage.OriginalImageUrl
-	if originalURL == "" && len(illust.MetaPages) > 0 {
-		originalURL = illust.MetaPages[0].ImageURLs.Original
-	}
+	Illust, err := convertToIllustCache(illust)
 
-	summary := ToIllustSummary(illust, originalURL)
-	Illust := IllustCache{
-		PID:         summary.PID,
-		UID:         summary.UID,
-		Keyword:     summary.Tags[0],
-		Title:       summary.Title,
-		AuthorName:  summary.AuthorName,
-		ImageURL:    summary.ImageUrl,
-		OriginalURL: summary.OriginalUrl,
-		Bookmarks:   summary.TotalBookmarks,
-		TotalView:   summary.TotalView,
-		CreateDate:  summary.CreateDate,
-		PageCount:   summary.PageCount,
-		R18:         summary.R18,
-	}
-	return &Illust, nil
+	return &Illust, err
 }
 
 func FetchPixivByUser(uid, gid int64, limit int) ([]IllustCache, error) {
@@ -81,8 +63,6 @@ func fetchPixivCommon(
 	keywords ...string,
 ) ([]IllustCache, error) {
 
-	keyword := ""
-
 	accessToken, err := tokenResp.GetAccessToken()
 	if err != nil {
 		return nil, err
@@ -112,55 +92,18 @@ func fetchPixivCommon(
 				}
 			}
 
-			originalUrl := raw.MetaSinglePage.OriginalImageUrl
-			if originalUrl == "" && len(raw.MetaPages) > 0 {
-				originalUrl = raw.MetaPages[0].ImageURLs.Original
-			}
-
-			summary := ToIllustSummary(raw, originalUrl)
-
-			// ✅ R18 过滤
-			if isR18Req != nil {
-				hasR18Tag := func() bool {
-					for _, tag := range summary.Tags {
-						if isR18(tag) {
-							return true
-						}
-					}
-					return false
-				}
-
-				summary.R18 = (raw.XRestrict == 1) || hasR18Tag()
-
-				if summary.R18 != *isR18Req {
-					continue
-				}
+			Illust, err := convertToIllustCache(raw)
+			if err != nil {
+				return nil, err
 			}
 
 			if len(keywords) > 0 {
-				keyword = keywords[0]
-			} else {
-				keyword = summary.Tags[0]
+				Illust.Keyword = keywords[0]
 			}
 
-			Illust := IllustCache{
-				PID:         summary.PID,
-				UID:         summary.UID,
-				Keyword:     keyword,
-				Title:       summary.Title,
-				AuthorName:  summary.AuthorName,
-				ImageURL:    summary.ImageUrl,
-				OriginalURL: summary.OriginalUrl,
-				Bookmarks:   summary.TotalBookmarks,
-				TotalView:   summary.TotalView,
-				CreateDate:  summary.CreateDate,
-				PageCount:   summary.PageCount,
-				R18:         summary.R18,
-			}
-
-			Illust.Tags, err = json.Marshal(summary.Tags)
-			if err != nil {
-				fmt.Println(err)
+			// ✅ R18 过滤
+			if isR18Req != nil && Illust.R18 != *isR18Req {
+				continue
 			}
 
 			_ = db.Create(&Illust).Error
@@ -274,7 +217,7 @@ func GetIllustsByKeyword(keyword string, r18Req bool, limit int, gid int64) ([]I
 
 	illustInfos = append(illustInfos, pixivResults...)
 
-	if len(illustInfos) > limit {
+	if len(illustInfos) >= limit {
 		illustInfos = illustInfos[:limit]
 	}
 
@@ -340,6 +283,7 @@ func (c *IllustCache) fetchImg(url string, preferOriginal bool) ([]byte, error) 
 		return nil, err
 	}
 
+	// 用base64发成功概率很小
 	/*	var builder strings.Builder
 		builder.WriteString("base64://")
 		base64Encoder := base64.NewEncoder(base64.StdEncoding, &builder)
