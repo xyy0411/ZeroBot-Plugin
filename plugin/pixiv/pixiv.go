@@ -201,7 +201,7 @@ func GetIllustsByKeyword(keyword string, r18Req bool, limit int, gid int64) ([]I
 	fmt.Printf("从数据库读到%d,还需要下载%d\n", len(illustInfos), needed)
 	// 缓存没数据 -> 调用Pixiv API拉取
 	pixivResults, err := FetchPixivIllusts(keyword, r18Req, needed)
-	if err != nil {
+	if err != nil && len(pixivResults) == 0 {
 		return nil, err
 	}
 
@@ -263,10 +263,10 @@ func (c *IllustCache) fetchImg(url string, preferOriginal bool) ([]byte, error) 
 
 	client := NewClient()
 	resp, err := client.Do(req)
-	defer resp.Body.Close()
 	if err != nil {
 		return nil, fmt.Errorf("请求失败: %w", err)
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("下载图片失败: HTTP %d", resp.StatusCode)
