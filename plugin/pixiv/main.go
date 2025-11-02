@@ -107,7 +107,7 @@ func init() {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
 		}
-		openFile, err := os.OpenFile(nodesFile, os.O_CREATE|os.O_WRONLY, 0644)
+		openFile, err := os.OpenFile(nodesFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 		if err != nil {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
