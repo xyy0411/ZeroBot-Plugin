@@ -1,45 +1,27 @@
 package pixiv
 
 import (
-	"crypto/tls"
-	"encoding/json"
 	"fmt"
+	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/api"
+	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/cache"
+	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
+	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/proxy"
 	"github.com/FloatTech/floatbox/file"
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
 	"github.com/FloatTech/zbputils/ctxext"
-	"github.com/jinzhu/gorm"
 	log "github.com/sirupsen/logrus"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
-	"io"
 	"math/rand"
-	"net/http"
-	// _ "net/http/pprof"
-	"net/url"
+
 	"os"
 	"strconv"
-	"time"
 )
 
 var defaultKeyword = []string{"萝莉", "御姐", "妹妹", "姐姐"}
 
-var defaultClient *http.Client
-
-func init() {
-	proxyURL, err := url.Parse("http://127.0.0.1:10809")
-	if err != nil {
-		log.Warning("连接代理错误:", err)
-	}
-
-	defaultClient = &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{MaxVersion: tls.VersionTLS13},
-			Proxy:           http.ProxyURL(proxyURL),
-		},
-		Timeout: time.Minute,
-	}
-}
+var service *Service
 
 func init() {
 	if file.IsNotExist("data/pixiv") {
@@ -48,30 +30,21 @@ func init() {
 			panic(err)
 		}
 	}
-	var err error
-	db, err = gorm.Open("sqlite3", "data/pixiv/pixiv.db")
-	if err != nil {
-		panic(err)
-	}
-	if err = db.AutoMigrate(&IllustCache{}, &SentImage{}, &RefreshToken{}).Error; err != nil {
-		panic(err)
-	}
-	sqlDB := db.DB()
-	sqlDB.SetMaxOpenConns(10)
-	sqlDB.SetMaxIdleConns(5)
-	sqlDB.SetConnMaxLifetime(time.Hour)
 
-	tokenResp = NewTokenStore()
-	/*	go func() {
-		// 使用 6060 端口
-		log.Println("Starting pprof server on http://localhost:6060")
-		if err := http.ListenAndServe("localhost:6060", nil); err != nil {
-			log.Printf("pprof server failed: %v", err)
-		}
-	}()*/
+	db := cache.NewDB("data/pixiv/pixiv.db")
+
+	var t1 model.RefreshToken
+	if err := db.First(&t1).Error; err != nil {
+		log.Warning("Fail fetching token store from database")
+	}
+
+	pixivAPI := api.NewPixivAPI(t1.Token, "http://127.0.0.1:10809")
+	manager := proxy.NewManager()
+	service = NewService(db, pixivAPI, manager)
 }
 
 func init() {
+
 	engine := control.AutoRegister(&ctrl.Options[*zero.Ctx]{
 		DisableOnDefault: false,
 		Brief:            "Pixiv 图片搜索",
@@ -80,59 +53,27 @@ func init() {
 
 	engine.OnRegex(`^下载代理*(.+)`, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		url := ctx.State["regex_matched"].([]string)[1]
-		req, _ := http.NewRequest("GET", url, nil)
-		req.Header.Set("User-Agent", "v2rayN/5.38")
-		client := &http.Client{}
-		resp, err := client.Do(req)
+		err := service.Proxy.DownloadingNode(url)
 		if err != nil {
 			ctx.SendChain(message.Text("ERROR: ", err))
-			return
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != 200 {
-			ctx.SendChain(message.Text("ERROR: ", resp.Status))
-			return
-		}
-		rawData, err := io.ReadAll(resp.Body)
-		if err != nil {
-			log.Fatal(err)
-		}
-		nodes, err := ParseSubscription(string(rawData))
-		if err != nil {
-			ctx.SendChain(message.Text("ERROR: ", err))
-			return
-		}
-		nodesBytes, err := json.Marshal(nodes)
-		if err != nil {
-			ctx.SendChain(message.Text("ERROR: ", err))
-			return
-		}
-		openFile, err := os.OpenFile(nodesFile, os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			ctx.SendChain(message.Text("ERROR: ", err))
-			return
-		}
-		defer openFile.Close()
-		_, err = openFile.Write(nodesBytes)
-		if err != nil {
-			ctx.SendChain(message.Text("ERROR: ", err))
-			return
 		}
 		ctx.SendChain(message.Text("代理节点已更新"))
 	})
 
-	engine.OnFullMatch("切换代理节点", zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
-		autoSwitchConcurrent()
+	engine.OnFullMatch("切换代理节点", zero.SuperUserPermission).SetBlock(false).Handle(func(ctx *zero.Ctx) {
+		service.Proxy.AutoSwitch()
+		ctx.SendChain(message.Text("切换代理节点完成"))
 	})
 	engine.OnRegex(`^设置p站token (.*)`, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		token := ctx.State["regex_matched"].([]string)[1]
-		var refreshToken RefreshToken
+		var refreshToken model.RefreshToken
 		refreshToken.User = ctx.Event.UserID
 		refreshToken.Token = token
-		if err := db.Save(&refreshToken).Error; err != nil {
+		if err := service.DB.Save(&refreshToken).Error; err != nil {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
 		}
+		service.API.Token.RefreshToken = token
 
 		ctx.SendChain(message.Text("Pixiv Token: ", token))
 	})
@@ -144,12 +85,12 @@ func init() {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
 		}
-		illust, err := FetchPixivByPID(pid)
+		illust, err := service.API.FetchPixivByPID(pid)
 		if err != nil {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
 		}
-		img, err1 := illust.FetchPixivImage(true)
+		img, err1 := service.API.Client.FetchPixivImage(*illust, illust.OriginalURL, true)
 		if err1 != nil {
 			ctx.SendChain(message.Text("ERROR: ", err1))
 			return
@@ -181,13 +122,25 @@ func init() {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
 		}
-		illustInfos, err := FetchPixivByUser(uid, ctx.Event.GroupID, limitInt)
+		pictureIDs, err := service.DB.GetSentPictureIDs(ctx.Event.GroupID)
 		if err != nil {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
 		}
+		illustInfos, err := service.API.FetchPixivByUser(uid, limitInt, pictureIDs)
+		if err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+		if len(illustInfos) == 0 {
+			ctx.SendChain(message.Text("没有找到图片"))
+			return
+		}
 		for _, illust := range illustInfos {
-			img, err1 := illust.FetchPixivImage()
+
+			_ = service.DB.Create(illust)
+
+			img, err1 := service.API.Client.FetchPixivImage(illust, illust.OriginalURL)
 			if err1 != nil {
 				ctx.SendChain(message.Text("ERROR: ", err1))
 				continue
@@ -200,33 +153,33 @@ func init() {
 				"\n收藏数:", illust.Bookmarks,
 				"\n预览数:", illust.TotalView,
 				"\n发布时间:", illust.CreateDate,
-			), message.ImageBytes(img)); msgID.ID() == 0 {
+			), message.ImageBytes(img)); msgID.ID() <= 0 {
 				ctx.SendChain(message.Text("图片发送失败"))
 				continue
 			}
-			sent := SentImage{
+			sent := model.SentImage{
 				GroupID: ctx.Event.GroupID,
 				PID:     illust.PID,
 			}
 
-			if err = db.Save(&sent).Error; err != nil {
+			if err = service.DB.Save(&sent).Error; err != nil {
 				ctx.SendChain(message.Text("ERROR: ", err))
 			}
 		}
 	})
 
 	engine.OnRegex(`^每日[色|涩|瑟]图$`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
-		illusts, err := FetchPixivRecommend(1)
-		if err != nil {
-			ctx.SendChain(message.Text("ERROR: ", err))
-			return
-		}
-		img, err := illusts[0].FetchPixivImage()
+		illusts, err := service.API.FetchPixivRecommend(1)
 		if err != nil {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
 		}
 		illust := illusts[0]
+		img, err := service.API.Client.FetchPixivImage(illust, illust.OriginalURL, true)
+		if err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
 		ctx.SendChain(message.Text(
 			"PID:", illust.PID,
 			"\n标题:", illust.Title,
@@ -260,17 +213,28 @@ func init() {
 			return
 		}
 
-		r18Req := isR18(keyword)                   // 是否要求 R-18
-		cleanKeyword := removeR18Keywords(keyword) // 去掉 R-18 关键词
+		r18Req := api.IsR18(keyword)
+		cleanKeyword := api.RemoveR18Keywords(keyword)
 
-		illusts, err := GetIllustsByKeyword(cleanKeyword, r18Req, limitInt, ctx.Event.GroupID)
+		cachedIllusts, err := service.DB.FindIllustsSmart(ctx.Event.GroupID, cleanKeyword, limitInt, r18Req)
+		if err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+
+		cached := service.DB.FindCached(cleanKeyword)
+
+		illusts, err := service.API.GetIllustsByKeyword(keyword, limitInt, cachedIllusts, cached)
 		if err != nil {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
 		}
 
 		for _, illust := range illusts {
-			img, err1 := illust.FetchPixivImage()
+
+			_ = service.DB.Create(illust).Error
+
+			img, err1 := service.API.Client.FetchPixivImage(illust, illust.OriginalURL)
 			if err1 != nil {
 				ctx.SendChain(message.Text("ERROR: ", err1))
 				continue
@@ -283,19 +247,19 @@ func init() {
 				"\n收藏数:", illust.Bookmarks,
 				"\n预览数:", illust.TotalView,
 				"\n发布时间:", illust.CreateDate,
-			), message.ImageBytes(img)); msgID.ID() == 0 {
+			), message.ImageBytes(img)); msgID.ID() <= 0 {
 				continue
 			}
-			sent := SentImage{
+			sent := model.SentImage{
 				GroupID: ctx.Event.GroupID,
 				PID:     illust.PID,
 			}
 
-			if err = db.Save(&sent).Error; err != nil {
+			if err = service.DB.Save(&sent).Error; err != nil {
 				ctx.SendChain(message.Text("ERROR: ", err))
 			}
 		}
 
-		BackgroundCacheFiller(cleanKeyword, 15, r18Req, 5, ctx.Event.GroupID)
+		service.BackgroundCacheFiller(cleanKeyword, 15, r18Req, 5, ctx.Event.GroupID)
 	})
 }

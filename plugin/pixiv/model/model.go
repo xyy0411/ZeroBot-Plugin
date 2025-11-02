@@ -1,85 +1,43 @@
-package pixiv
+package model
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
-	log "github.com/sirupsen/logrus"
-	"io"
-	"net/http"
-	"net/url"
-	"time"
+	"github.com/jinzhu/gorm"
+	"gorm.io/datatypes"
 )
 
-type TokenStore struct {
-	AccessToken  string    `json:"access_token"`
-	RefreshToken string    `json:"refresh_token"`
-	ExpiresIn    int64     `json:"expires_in"`
-	TokenType    string    `json:"token_type"`
-	ExpiresAt    time.Time `json:"-"`
+// IllustCache 插画缓存表
+type IllustCache struct {
+	gorm.Model
+
+	PID         int64          `gorm:"unique_index:idx_keyword_pid;not null;column:pid"` // Pixiv 作品 ID
+	UID         int64          `gorm:"default:0;not null;column:uid"`                    // 插画作者的id
+	Keyword     string         `gorm:"unique_index:idx_keyword_pid;type:varchar(255)"`   // 搜索关键词
+	Title       string         `gorm:"type:varchar(255)"`                                // 标题
+	AuthorName  string         `gorm:"type:varchar(255)"`                                // 用户名
+	ImageURL    string         `gorm:"type:varchar(500)"`                                // 大图地址
+	OriginalURL string         `gorm:"type:varchar(500)"`                                // 原图地址
+	R18         bool           `gorm:"not null;default:false"`                           // 是否为 R-18 作品
+	Bookmarks   int64          // 收藏数
+	TotalView   int64          // 总浏览数
+	CreateDate  string         // 创建日期
+	PageCount   int64          // 页数
+	Tags        datatypes.JSON `gorm:"type:json"` // 插画的所有标签 方便后续查找
 }
 
-func NewTokenStore() *TokenStore {
-	var t1 RefreshToken
-	if err := db.First(&t1).Error; err != nil {
-		log.Warning("Fail fetching token store from database")
-	}
-	return &TokenStore{
-		RefreshToken: t1.Token,
-	}
+// SentImage 已发送记录表
+type SentImage struct {
+	gorm.Model
+
+	GroupID int64 `gorm:"index:idx_group_pid;not null"`            // 群组 ID
+	PID     int64 `gorm:"index:idx_group_pid;not null;column:pid"` // 插画 PID
 }
 
-func (t *TokenStore) GetAccessToken() (string, error) {
+type RefreshToken struct {
+	gorm.Model
 
-	// 1. access token 还有效，直接用
-	if time.Now().Before(t.ExpiresAt) && t.AccessToken != "" {
-		fmt.Println("access_token is expired")
-		return t.AccessToken, nil
-	}
+	User int64 `gorm:"unique"`
 
-	// 2. 否则用 refresh token 刷新
-	err := t.RefreshPixivAccessToken()
-	if err != nil {
-		return "", err
-	}
-
-	t.ExpiresAt = time.Now().Add(time.Duration(t.ExpiresIn/2) * time.Second)
-	return t.AccessToken, nil
-}
-
-// RefreshPixivAccessToken 用 refresh_token 刷新 access_token
-func (t *TokenStore) RefreshPixivAccessToken() error {
-	endpoint := "https://oauth.secure.pixiv.net/auth/token"
-
-	data := url.Values{}
-	data.Set("grant_type", "refresh_token")
-	data.Set("client_id", "MOBrBDS8blbauoSck0ZfDbtuzpyT")
-	data.Set("client_secret", "lsACyCD94FhDUtGTXi3QzcFE2uU1hqtDaKeqrdwj")
-	data.Set("refresh_token", t.RefreshToken)
-
-	req, _ := http.NewRequest("POST", endpoint, bytes.NewBufferString(data.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("User-Agent", "PixivAndroidApp/5.0.234 (Android 11; Pixel 5)")
-
-	client := NewClient()
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("刷新失败: %s\nbody: %s", resp.Status, string(body))
-	}
-
-	var tokenRes TokenStore
-	err = json.Unmarshal(body, &tokenRes)
-
-	t.AccessToken = tokenRes.AccessToken
-	t.ExpiresIn = tokenRes.ExpiresIn
-
-	return err
+	Token string
 }
 
 type RootEntity struct {

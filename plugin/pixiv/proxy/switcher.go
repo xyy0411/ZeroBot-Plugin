@@ -1,44 +1,26 @@
-package pixiv
+package proxy
 
 import (
-	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"net"
-	"net/url"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
-const (
-	nodesFile        = "/root/v2ray/nodes.json"
-	currentIndexFile = "/root/v2ray/current_index.txt"
-	configFile       = "/usr/local/etc/v2ray/config.json"
-)
+type Manager struct{}
 
-// Node 通用节点结构
-type Node struct {
-	Protocol string `json:"protocol"`
-	Name     string `json:"name"`
-	Address  string `json:"address"`
-	Port     string `json:"port"`
-	ID       string `json:"id"`
-	Network  string `json:"network"`
-	Host     string `json:"host"`
-	Path     string `json:"path"`
-	TLS      string `json:"tls"`
-	Sni      string `json:"sni"`
-
-	DelayMs float64 `json:"-"`
+func NewManager() *Manager {
+	return &Manager{}
 }
 
-// 并发自动测试并切换
-func autoSwitchConcurrent() {
+// AutoSwitch 并发自动测试并切换
+func (m *Manager) AutoSwitch() {
 	// load nodes.json
 	bs, err := os.ReadFile(nodesFile)
 	if err != nil {
@@ -56,8 +38,7 @@ func autoSwitchConcurrent() {
 	}
 
 	total := len(nodes)
-	okCount := 0
-	failCount := 0
+	var okCount, failCount int32
 
 	fmt.Printf("开始并发检测 %d 个节点...\n", len(nodes))
 
@@ -72,12 +53,12 @@ func autoSwitchConcurrent() {
 			delay, err := testNode(nd, timeout)
 			if err != nil {
 				fmt.Printf("❌ %s 不可用: %v\n", nd.Name, err)
-				failCount++
+				atomic.AddInt32(&failCount, 1)
 				return
 			}
 			nd.DelayMs = delay
 			fmt.Printf("✅ %s 可用，延迟 %.1fms\n", nd.Name, nd.DelayMs)
-			okCount++
+			atomic.AddInt32(&okCount, 1)
 			results <- nd
 		}(n)
 	}
@@ -105,7 +86,7 @@ func autoSwitchConcurrent() {
 	fmt.Printf("\n⚡ 最佳节点: %s, 延迟 %.1fms\n", best.Name, best.DelayMs)
 
 	// 写配置并重启 v2ray（确保重启）
-	if err := writeConfigAndRestart(best); err != nil {
+	if err := m.writeConfigAndRestart(best); err != nil {
 		fmt.Println("⚠️ 切换到最佳节点失败:", err)
 		return
 	}
@@ -113,7 +94,7 @@ func autoSwitchConcurrent() {
 	fmt.Println("✅ 自动切换完成")
 }
 
-func writeConfigAndRestart(node Node) error {
+func (m *Manager) writeConfigAndRestart(node Node) error {
 	portNum := node.Port
 	if _, err := strconv.Atoi(portNum); err != nil {
 		portNum = "80"
@@ -173,29 +154,8 @@ func writeConfigAndRestart(node Node) error {
 	return nil
 }
 
-func testNode(node Node, timeout time.Duration) (float64, error) {
-	addr := net.JoinHostPort(node.Address, node.Port)
-	start := time.Now()
-
-	var conn net.Conn
-	var err error
-	if node.TLS == "tls" || node.TLS == "TLS" {
-		conn, err = tls.DialWithDialer(&net.Dialer{Timeout: timeout}, "tcp", addr, &tls.Config{
-			ServerName:         node.Host,
-			InsecureSkipVerify: true,
-		})
-	} else {
-		conn, err = net.DialTimeout("tcp", addr, timeout)
-	}
-	if err != nil {
-		return 0, err
-	}
-	_ = conn.Close()
-	return float64(time.Since(start).Milliseconds()), nil
-}
-
-// ParseSubscription 解析订阅内容
-func ParseSubscription(raw string) ([]Node, error) {
+// parseSubscription 解析订阅内容
+func parseSubscription(raw string) ([]Node, error) {
 	var nodes []Node
 
 	// 第一次 Base64 解码
@@ -227,60 +187,4 @@ func ParseSubscription(raw string) ([]Node, error) {
 		}
 	}
 	return nodes, nil
-}
-
-// 解析 VMess 节点
-func parseVMess(line string) (Node, error) {
-	b64 := strings.TrimPrefix(line, "vmess://")
-	data, err := base64.StdEncoding.DecodeString(b64)
-	if err != nil {
-		return Node{}, err
-	}
-
-	var vm map[string]string
-	if err := json.Unmarshal(data, &vm); err != nil {
-		return Node{}, err
-	}
-
-	return Node{
-		Protocol: "vmess",
-		Name:     vm["ps"],
-		Address:  vm["add"],
-		Port:     vm["port"],
-		ID:       vm["id"],
-		Network:  vm["net"],
-		Host:     vm["host"],
-		Path:     vm["path"],
-		TLS:      vm["tls"],
-		Sni:      vm["sni"],
-	}, nil
-}
-
-// 解析 VLESS 节点
-func parseVLESS(line string) (Node, error) {
-	raw := strings.TrimPrefix(line, "vless://")
-
-	u, err := url.Parse(raw)
-	if err != nil {
-		return Node{}, err
-	}
-
-	id := u.User.Username()
-	address := u.Hostname()
-	port := u.Port()
-	name := u.Fragment
-
-	query := u.Query()
-	return Node{
-		Protocol: "vless",
-		Name:     name,
-		Address:  address,
-		Port:     port,
-		ID:       id,
-		Network:  query.Get("type"),
-		Host:     query.Get("host"),
-		Path:     query.Get("path"),
-		TLS:      query.Get("security"),
-		Sni:      query.Get("sni"),
-	}, nil
 }
