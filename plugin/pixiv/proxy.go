@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	nodesFile        = "/usr/local/etc/v2ray/nodes.json"
-	currentIndexFile = "/usr/local/etc/v2ray/current_index.txt"
+	nodesFile        = "/root/v2ray/nodes.json"
+	currentIndexFile = "/root/v2ray/current_index.txt"
 	configFile       = "/usr/local/etc/v2ray/config.json"
 )
 
