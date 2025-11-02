@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/jinzhu/gorm"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -11,6 +12,14 @@ import (
 
 func NewClient() *http.Client {
 	return defaultClient
+}
+
+func ProcessError(err error) bool {
+	if errors.Is(err, io.EOF) {
+		autoSwitchConcurrent()
+		return true
+	}
+	return false
 }
 
 func CountIllustsSmart(gid int64, keyword string, r18Req bool) (int64, error) {

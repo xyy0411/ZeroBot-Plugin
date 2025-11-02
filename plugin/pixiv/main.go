@@ -2,6 +2,7 @@ package pixiv
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"github.com/FloatTech/floatbox/file"
 	ctrl "github.com/FloatTech/zbpctrl"
@@ -11,6 +12,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
+	"io"
 	"math/rand"
 	"net/http"
 	// _ "net/http/pprof"
@@ -76,6 +78,52 @@ func init() {
 		Help:             "- [x张]涩图 [关键词]\n- 每日涩图\n- [x张]画师[画师的uid] \n- p站搜图[插画pid] \n[]为可忽略项\n可添加多个关键词每个关键词用空格隔开\n默认不发R-18如果要发就加一个R-18关键词",
 	}).ApplySingle(ctxext.NewGroupSingle("别着急，都会有的"))
 
+	engine.OnRegex(`^下载代理*(.+)`, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+		url := ctx.State["regex_matched"].([]string)[1]
+		req, _ := http.NewRequest("GET", url, nil)
+		req.Header.Set("User-Agent", "v2rayN/5.38")
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			ctx.SendChain(message.Text("ERROR: ", resp.Status))
+			return
+		}
+		rawData, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Fatal(err)
+		}
+		nodes, err := ParseSubscription(string(rawData))
+		if err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+		nodesBytes, err := json.Marshal(nodes)
+		if err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+		openFile, err := os.OpenFile(nodesFile, os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+		defer openFile.Close()
+		_, err = openFile.Write(nodesBytes)
+		if err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+		ctx.SendChain(message.Text("代理节点已更新"))
+	})
+
+	engine.OnFullMatch("切换代理节点", zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+		autoSwitchConcurrent()
+	})
 	engine.OnRegex(`^设置p站token (.*)`, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		token := ctx.State["regex_matched"].([]string)[1]
 		var refreshToken RefreshToken
