@@ -3,7 +3,9 @@ package proxy
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"os"
 	"os/exec"
 	"strconv"
@@ -20,44 +22,42 @@ func NewManager() *Manager {
 }
 
 // AutoSwitch 并发自动测试并切换
-func (m *Manager) AutoSwitch() {
+func (m *Manager) AutoSwitch() (string, error) {
 	// load nodes.json
 	bs, err := os.ReadFile(nodesFile)
 	if err != nil {
-		fmt.Println("读取 nodes.json 失败:", err)
-		return
+		return "", errors.Join(errors.New("读取 nodes.json 失败 "), err)
 	}
 	var nodes []Node
 	if err := json.Unmarshal(bs, &nodes); err != nil {
-		fmt.Println("解析 nodes.json 失败:", err)
-		return
+		return "", errors.Join(errors.New("解析 nodes.json 失败 "), err)
 	}
 	if len(nodes) == 0 {
-		fmt.Println("nodes.json 为空")
-		return
+		return "", errors.New("nodes.json 为空")
 	}
 
 	total := len(nodes)
 	var okCount, failCount int32
 
-	fmt.Printf("开始并发检测 %d 个节点...\n", len(nodes))
+	log.Printf("开始检测 %d 个节点...\n", len(nodes))
 
 	timeout := 4 * time.Second
 	results := make(chan Node, len(nodes))
 	var wg sync.WaitGroup
 
+	var msg strings.Builder
 	for _, n := range nodes {
 		wg.Add(1)
 		go func(nd Node) {
 			defer wg.Done()
 			delay, err := testNode(nd, timeout)
 			if err != nil {
-				fmt.Printf("❌ %s 不可用: %v\n", nd.Name, err)
+				msg.WriteString(fmt.Sprintf("❌ %s 不可用: %v\n", nd.Name, err))
 				atomic.AddInt32(&failCount, 1)
 				return
 			}
 			nd.DelayMs = delay
-			fmt.Printf("✅ %s 可用，延迟 %.1fms\n", nd.Name, nd.DelayMs)
+			msg.WriteString(fmt.Sprintf("✅ %s 可用，延迟 %.1fms\n", nd.Name, nd.DelayMs))
 			atomic.AddInt32(&okCount, 1)
 			results <- nd
 		}(n)
@@ -79,19 +79,17 @@ func (m *Manager) AutoSwitch() {
 	}
 
 	if best.Name == "" {
-		fmt.Println("🚨 未发现可用节点")
-		return
+		return "", errors.New("未发现可用节点")
 	}
-	fmt.Printf("\n检测完成：共 %d 个节点，可用 %d 个，不可用 %d 个。\n", total, okCount, failCount)
-	fmt.Printf("\n⚡ 最佳节点: %s, 延迟 %.1fms\n", best.Name, best.DelayMs)
+	msg.WriteString(fmt.Sprintf("\n检测完成：共 %d 个节点，可用 %d 个，不可用 %d 个。\n", total, okCount, failCount))
+	msg.WriteString(fmt.Sprintf("\n⚡ 最佳节点: %s, 延迟 %.1fms\n", best.Name, best.DelayMs))
 
 	// 写配置并重启 v2ray（确保重启）
 	if err := m.writeConfigAndRestart(best); err != nil {
-		fmt.Println("⚠️ 切换到最佳节点失败:", err)
-		return
+		return "", errors.Join(errors.New("切换到最佳节点失败 "), err)
 	}
 
-	fmt.Println("✅ 自动切换完成")
+	return msg.String(), nil
 }
 
 func (m *Manager) writeConfigAndRestart(node Node) error {

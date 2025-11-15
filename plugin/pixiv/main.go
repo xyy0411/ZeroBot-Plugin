@@ -61,8 +61,13 @@ func init() {
 	})
 
 	engine.OnFullMatch("切换代理节点", zero.SuperUserPermission).SetBlock(false).Handle(func(ctx *zero.Ctx) {
-		service.Proxy.AutoSwitch()
-		ctx.SendChain(message.Text("切换代理节点完成"))
+		msg, err := service.Proxy.AutoSwitch()
+		if err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+		ctx.SendChain(message.Text(msg))
+		ctx.SendChain(message.Text("✅ 自动切换完成"))
 	})
 	engine.OnRegex(`^设置p站token (.*)`, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		token := ctx.State["regex_matched"].([]string)[1]
