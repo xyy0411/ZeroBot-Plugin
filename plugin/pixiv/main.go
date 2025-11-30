@@ -106,6 +106,8 @@ func init() {
 			ctx.SendChain(message.Text("ERROR: ", err1))
 			return
 		}
+		// tags的类型是json格式所以就不设置keyword了
+		_ = service.DB.Create(illust)
 		fmt.Println("获取", illust.PID, "成功，准备发送！", float64(len(img))/1024/1024, "mb")
 		ctx.SendChain(message.Text(
 			"PID:", illust.PID,
@@ -116,6 +118,14 @@ func init() {
 			"\n预览数:", illust.TotalView,
 			"\n发布时间:", illust.CreateDate,
 		), message.ImageBytes(img))
+		gid := ctx.Event.GroupID
+		if gid == 0 {
+			gid = -ctx.Event.UserID
+		}
+		service.DB.Create(&model.SentImage{
+			GroupID: gid,
+			PID:     illust.PID,
+		})
 	})
 
 	engine.OnRegex(`^(\d+)?张?画师(\d+)`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
