@@ -198,11 +198,11 @@ func init() {
 	})
 
 	engine.OnRegex(`^每日[色|涩|瑟]图$`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
-		if !service.Acquire(ctx.Event.UserID) {
-			ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text("上一个任务还没结束，请稍后再试"))
-			return
-		}
-		defer service.Release(ctx.Event.UserID)
+		/*		if !service.Acquire(ctx.Event.UserID) {
+					ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text("上一个任务还没结束，请稍后再试"))
+					return
+				}
+				defer service.Release(ctx.Event.UserID)*/
 
 		illusts, err := service.API.FetchPixivRecommend(1)
 		if err != nil {
