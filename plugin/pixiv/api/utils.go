@@ -35,16 +35,17 @@ func buildPixivSearchURL(keyword string) string {
 	}
 
 	params := url.Values{}
-	params.Set("word", url.QueryEscape(keyword))
-	params.Set("sort", "popular_desc")
+	params.Set("word", keyword)
 	// 严格匹配 exact_match_for_tags
 	// 标题简介有相同的 title_and_caption
 	// 宽松匹配 partial_match_for_tags
 	// 暂时使用宽松匹配
 	params.Set("search_target", "partial_match_for_tags")
+	params.Set("sort", "popular_desc")
 	//params.Set("offset", fmt.Sprintf("%d", offset))
 	params.Set("order", "date_desc")
-	params.Set("filter", "for_ios")
+	params.Set("filter", "for_android")
+	// params.Set("filter", "for_ios")
 	// params.Set("bookmark_num_min", "1000")
 
 	baseURL.RawQuery = params.Encode()

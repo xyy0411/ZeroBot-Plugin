@@ -86,14 +86,14 @@ func (p *PixivAPI) GetIllustsByKeyword(keyword string, limit int, cachedIllust [
 	r18Req := IsR18(keyword)
 	keyword = RemoveR18Keywords(keyword)
 
-	// 设置一个保底的关键词
-	if keyword == "" && r18Req {
-		keyword = "R-18"
-	}
-
 	// 如果查到了，直接返回
 	if len(cachedIllust) == limit {
 		return cachedIllust, nil
+	}
+
+	// 设置一个保底的关键词
+	if keyword == "" && r18Req {
+		keyword = "R-18"
 	}
 
 	// 计算还需要几张图片
@@ -105,7 +105,7 @@ func (p *PixivAPI) GetIllustsByKeyword(keyword string, limit int, cachedIllust [
 	fmt.Printf("从数据库读到%d,还需要下载%d\n", len(cachedIllust), needed)
 	// 缓存没数据 -> 调用Pixiv API拉取
 	pixivResults, err := p.FetchPixivIllusts(keyword, r18Req, needed, cached)
-	if err != nil && len(pixivResults) == 0 {
+	if err != nil && len(cachedIllust) == 0 {
 		return nil, err
 	}
 
@@ -130,12 +130,11 @@ func (p *PixivAPI) GetIllustsByKeyword(keyword string, limit int, cachedIllust [
 	return pixivResults, nil
 }
 
-// 记得处理db
 func (p *PixivAPI) fetchPixivCommon(
 	firstURL string,
 	limit int,
-	isR18Req *bool, // nil 表示不做R18过滤，true/false 表示要求
-	excludeCache map[int64]struct{}, // nil表示不做缓存排除
+	isR18Req *bool,
+	excludeCache map[int64]struct{},
 	keywords ...string,
 ) ([]model.IllustCache, error) {
 
@@ -146,18 +145,19 @@ func (p *PixivAPI) fetchPixivCommon(
 
 	results := make([]model.IllustCache, 0, limit)
 	seen := make(map[int64]struct{})
+
 	url := firstURL
-	for len(results) < limit && url != "" {
+
+	// 第一级：优先找高质量图（≥ 1000 收藏）
+	for url != "" {
 		rawData, err := p.Client.SearchPixivIllustrations(accessToken, url)
 		if err != nil {
 			return nil, err
 		}
 
 		for _, raw := range rawData.Illusts {
-			if raw.TotalBookmarks < 1000 {
-				continue
-			}
 
+			// 去重
 			if _, ok := seen[raw.Id]; ok {
 				continue
 			}
@@ -167,25 +167,72 @@ func (p *PixivAPI) fetchPixivCommon(
 				}
 			}
 
-			Illust, err := convertToIllustCache(raw)
+			ill, err := convertToIllustCache(raw)
 			if err != nil {
-				return nil, err
-			}
-
-			if len(keywords) > 0 {
-				Illust.Keyword = keywords[0]
-			}
-
-			// ✅ R18 过滤
-			if isR18Req != nil && Illust.R18 != *isR18Req {
 				continue
 			}
 
-			results = append(results, *Illust)
+			if len(keywords) > 0 {
+				ill.Keyword = keywords[0]
+			}
+
+			// R18过滤
+			if isR18Req != nil && ill.R18 != *isR18Req {
+				continue
+			}
+
 			seen[raw.Id] = struct{}{}
 
+			// 只要达到 limit 直接返回
+			if ill.Bookmarks >= 1000 {
+				results = append(results, *ill)
+				if len(results) >= limit {
+					return results[:limit], nil
+				}
+			}
+		}
+
+		url = rawData.NextUrl
+	}
+
+	// 第二级：低质量图补足 limit（从头开始重新扫描）
+	url = firstURL
+	for len(results) < limit && url != "" {
+
+		rawData, err := p.Client.SearchPixivIllustrations(accessToken, url)
+		if err != nil {
+			return results, nil
+		}
+
+		for _, raw := range rawData.Illusts {
+			if _, ok := seen[raw.Id]; ok {
+				continue
+			}
+			if excludeCache != nil {
+				if _, ok := excludeCache[raw.Id]; ok {
+					continue
+				}
+			}
+
+			ill, err := convertToIllustCache(raw)
+			if err != nil {
+				continue
+			}
+
+			if len(keywords) > 0 {
+				ill.Keyword = keywords[0]
+			}
+
+			if isR18Req != nil && ill.R18 != *isR18Req {
+				continue
+			}
+
+			seen[raw.Id] = struct{}{}
+
+			// 随便补几张得了
+			results = append(results, *ill)
 			if len(results) >= limit {
-				break
+				return results[:limit], nil
 			}
 		}
 

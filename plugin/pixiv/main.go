@@ -9,19 +9,19 @@ import (
 	"github.com/FloatTech/floatbox/file"
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
-	"github.com/FloatTech/zbputils/ctxext"
 	log "github.com/sirupsen/logrus"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
 	"math/rand"
-
 	"os"
 	"strconv"
 )
 
 var defaultKeyword = []string{"萝莉", "御姐", "妹妹", "姐姐"}
 
-var service *Service
+var (
+	service *Service
+)
 
 func init() {
 	if file.IsNotExist("data/pixiv") {
@@ -49,7 +49,7 @@ func init() {
 		DisableOnDefault: false,
 		Brief:            "Pixiv 图片搜索",
 		Help:             "- [x张]涩图 [关键词]\n- 每日涩图\n- [x张]画师[画师的uid] \n- p站搜图[插画pid] \n[]为可忽略项\n可添加多个关键词每个关键词用空格隔开\n默认不发R-18如果要发就加一个R-18关键词",
-	}).ApplySingle(ctxext.NewGroupSingle("别着急，都会有的"))
+	})
 
 	engine.OnRegex(`^下载代理*(.+)`, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		url := ctx.State["regex_matched"].([]string)[1]
@@ -84,6 +84,12 @@ func init() {
 	})
 
 	engine.OnRegex(`^p站搜图(\d+)`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+		if !service.Acquire(ctx.Event.UserID) {
+			ctx.SendChain(message.Text("上一个任务还没结束，请稍后再试"))
+			return
+		}
+		defer service.Release(ctx.Event.UserID)
+
 		rawPID := ctx.State["regex_matched"].([]string)[1]
 		pid, err := strconv.ParseInt(rawPID, 10, 64)
 		if err != nil {
@@ -105,6 +111,7 @@ func init() {
 			"PID:", illust.PID,
 			"\n标题:", illust.Title,
 			"\n画师:", illust.AuthorName,
+			"\ntag:", illust.Tags,
 			"\n收藏数:", illust.Bookmarks,
 			"\n预览数:", illust.TotalView,
 			"\n发布时间:", illust.CreateDate,
@@ -112,6 +119,12 @@ func init() {
 	})
 
 	engine.OnRegex(`^(\d+)?张?画师(\d+)`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+		if !service.Acquire(ctx.Event.UserID) {
+			ctx.SendChain(message.Text("上一个任务还没结束，请稍后再试"))
+			return
+		}
+		defer service.Release(ctx.Event.UserID)
+
 		limit := ctx.State["regex_matched"].([]string)[1]
 		if limit == "" {
 			limit = "1"
@@ -155,6 +168,7 @@ func init() {
 				"PID:", illust.PID,
 				"\n标题:", illust.Title,
 				"\n画师:", illust.AuthorName,
+				"\ntag:", illust.Tags,
 				"\n收藏数:", illust.Bookmarks,
 				"\n预览数:", illust.TotalView,
 				"\n发布时间:", illust.CreateDate,
@@ -174,21 +188,28 @@ func init() {
 	})
 
 	engine.OnRegex(`^每日[色|涩|瑟]图$`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+		if !service.Acquire(ctx.Event.UserID) {
+			ctx.SendChain(message.Text("上一个任务还没结束，请稍后再试"))
+			return
+		}
+		defer service.Release(ctx.Event.UserID)
+
 		illusts, err := service.API.FetchPixivRecommend(1)
 		if err != nil {
-			ctx.SendChain(message.Text("ERROR: ", err))
+			ctx.SendChain(message.Text("发送涩图失败惹"))
 			return
 		}
 		illust := illusts[0]
 		img, err := service.API.Client.FetchPixivImage(illust, illust.OriginalURL, true)
 		if err != nil {
-			ctx.SendChain(message.Text("ERROR: ", err))
+			ctx.SendChain(message.Text("发送涩图失败惹"))
 			return
 		}
 		ctx.SendChain(message.Text(
 			"PID:", illust.PID,
 			"\n标题:", illust.Title,
 			"\n画师:", illust.AuthorName,
+			"\ntag:", illust.Tags,
 			"\n收藏数:", illust.Bookmarks,
 			"\n预览数:", illust.TotalView,
 			"\n发布时间:", illust.CreateDate,
@@ -198,6 +219,12 @@ func init() {
 	engine.OnRegex(`^(\d+)?张?[色|瑟|涩]图\s*(.+)?`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		limit := ctx.State["regex_matched"].([]string)[1]
 		keyword := ctx.State["regex_matched"].([]string)[2]
+
+		if !service.Acquire(ctx.Event.UserID) {
+			ctx.SendChain(message.Text("上一个任务还没结束，请稍后再试"))
+			return
+		}
+		defer service.Release(ctx.Event.UserID)
 
 		if limit == "" {
 			limit = "1"
@@ -221,13 +248,23 @@ func init() {
 		r18Req := api.IsR18(keyword)
 		cleanKeyword := api.RemoveR18Keywords(keyword)
 
-		cachedIllusts, err := service.DB.FindIllustsSmart(ctx.Event.GroupID, cleanKeyword, limitInt, r18Req)
+		gid := ctx.Event.GroupID
+		if gid == 0 {
+			gid = -ctx.Event.UserID
+		}
+
+		cachedIllusts, err := service.DB.FindIllustsSmart(gid, keyword, limitInt, r18Req)
 		if err != nil {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
 		}
 
-		cached := service.DB.FindCached(cleanKeyword)
+		cached, _ := service.DB.GetSentPictureIDs(gid)
+
+		// 准备要发的图也要做过滤
+		for _, ill := range cachedIllusts {
+			cached = append(cached, ill.PID)
+		}
 
 		illusts, err := service.API.GetIllustsByKeyword(keyword, limitInt, cachedIllusts, cached)
 		if err != nil {
@@ -236,34 +273,11 @@ func init() {
 		}
 
 		for _, illust := range illusts {
-
-			_ = service.DB.Create(illust).Error
-
-			img, err1 := service.API.Client.FetchPixivImage(illust, illust.OriginalURL)
-			if err1 != nil {
-				ctx.SendChain(message.Text("ERROR: ", err1))
-				continue
-			}
-			fmt.Println("获取", illust.PID, "成功，准备发送！", float64(len(img))/1024/1024, "mb")
-			if msgID := ctx.SendChain(message.Text(
-				"PID:", illust.PID,
-				"\n标题:", illust.Title,
-				"\n画师:", illust.AuthorName,
-				"\n收藏数:", illust.Bookmarks,
-				"\n预览数:", illust.TotalView,
-				"\n发布时间:", illust.CreateDate,
-			), message.ImageBytes(img)); msgID.ID() <= 0 {
-				continue
-			}
-			sent := model.SentImage{
-				GroupID: ctx.Event.GroupID,
-				PID:     illust.PID,
-			}
-
-			if err = service.DB.Save(&sent).Error; err != nil {
-				ctx.SendChain(message.Text("ERROR: ", err))
-			}
+			fmt.Println(illust.PID)
+			_ = service.DB.Create(&illust).Error
 		}
+
+		service.SendIllusts(ctx, illusts, gid)
 
 		service.BackgroundCacheFiller(cleanKeyword, 15, r18Req, 5, ctx.Event.GroupID)
 	})

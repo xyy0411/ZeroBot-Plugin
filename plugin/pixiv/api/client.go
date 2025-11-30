@@ -39,7 +39,17 @@ func NewClient(proxyUrl string) *Client {
 func (c *Client) SearchPixivIllustrations(accessToken, url string) (*model.RootEntity, error) {
 	req, _ := http.NewRequest("GET", url, nil)
 	req.Header.Set("Authorization", "Bearer "+accessToken)
+
 	req.Header.Set("User-Agent", "PixivAndroidApp/5.0.234 (Android 11; Pixel 5)")
+	req.Header.Set("App-OS", "android")
+	req.Header.Set("App-OS-Version", "11")
+	req.Header.Set("App-Version", "5.0.234")
+
+	req.Header.Set("Accept-Language", "en_US")
+	req.Header.Set("Referer", "https://app-api.pixiv.net/")
+	req.Header.Set("Connection", "keep-alive")
+
+	req.Host = "app-api.pixiv.net"
 
 	resp, err := c.Do(req)
 	if err != nil {
@@ -73,18 +83,16 @@ func (c *Client) FetchPixivImage(illust model.IllustCache, url string, preferOri
 		preferOriginalFlag = preferOriginal[0]
 	}
 
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("创建请求失败: %w", err)
-	}
+	req, _ := http.NewRequest("GET", url, nil)
 
 	req.Header.Set("Referer", "https://www.pixiv.net/")
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+	req.Header.Set("User-Agent", "PixivAndroidApp/5.0.234 (Android 11; Pixel 5)")
 
 	resp, err := c.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("请求失败: %w", err)
 	}
+
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {

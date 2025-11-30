@@ -27,53 +27,103 @@ func NewDB(path string) *DB {
 	return &DB{db}
 }
 
-func (db *DB) CountIllustsSmart(gid int64, keyword string, r18Req bool) (int64, error) {
-	var count int64
-
-	query := db.buildIllustQuery(gid, keyword, r18Req)
-	err := query.Count(&count).Error
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return 0, err
-	}
-
-	return count, nil
-}
-
-// FindIllustsSmart 查找缓存（先 keyword，再 tags）
-func (db *DB) FindIllustsSmart(gid int64, keyword string, limit int, r18Req bool) ([]model.IllustCache, error) {
-	var illusts []model.IllustCache
-
-	query := db.buildIllustQuery(gid, keyword, r18Req)
-	err := query.Limit(limit).Find(&illusts).Error
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, err
-	}
-	return illusts, nil
-}
-
-// buildIllustQuery 封装基础查询逻辑（keyword + tags + 已发送过滤 + R18过滤）
-func (db *DB) buildIllustQuery(gid int64, keyword string, r18Req bool) *gorm.DB {
-	sub := db.Model(&model.SentImage{}).
-		Where("group_id = ?", gid).
-		Select("pid").
-		SubQuery()
-
+func (db *DB) FindByKeyword(gid int64, keyword string, limit int, r18Req bool) ([]model.IllustCache, error) {
+	var results []model.IllustCache
 	query := db.Model(&model.IllustCache{}).
-		Where("pid NOT IN (?)", sub).
-		Where("(keyword = ?) OR (keyword <> ? AND tags LIKE ?)", keyword, keyword, "%"+keyword+"%")
+		Where("keyword = ?", keyword).
+		Where("pid NOT IN (?)", db.Model(&model.SentImage{}).Where("group_id = ?", gid).Select("pid").SubQuery()).
+		Order("bookmarks DESC").
+		Limit(limit)
 
 	if !r18Req {
 		query = query.Where("r18 = ?", false)
 	}
-	return query
+
+	err := query.Find(&results).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	return results, nil
 }
 
-func (db *DB) FindCached(keyword string) []int64 {
-	var cachedIds []int64
-	_ = db.Model(&model.IllustCache{}).
+func (db *DB) FindByTag(gid int64, tag string, needed int, r18Req bool) ([]model.IllustCache, error) {
+	if needed <= 0 {
+		return nil, nil
+	}
+	var results []model.IllustCache
+
+	query := db.Model(&model.IllustCache{}).
+		Where("tags LIKE ?", "%"+tag+"%").
+		Where("pid NOT IN (?)", db.Model(&model.SentImage{}).Where("group_id = ?", gid).Select("pid").SubQuery()).
+		Order("bookmarks DESC").
+		Limit(needed)
+
+	if !r18Req {
+		query = query.Where("r18 = ?", false)
+	}
+
+	err := query.Find(&results).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+
+	return results, nil
+}
+func (db *DB) CountIllustsSmart(gid int64, keyword string, r18Req bool) (int64, error) {
+	var count int64
+
+	query := db.Model(&model.IllustCache{}).
 		Where("keyword = ?", keyword).
-		Pluck("pid", &cachedIds).Error
-	return cachedIds
+		Where("pid NOT IN (?)", db.Model(&model.SentImage{}).Where("group_id = ?", gid).Select("pid").SubQuery())
+
+	if !r18Req {
+		query = query.Where("r18 = ?", false)
+	}
+	err := query.Count(&count).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, err
+	}
+	return count, nil
+}
+
+func (db *DB) FindIllustsSmart(gid int64, keyword string, limit int, r18Req bool) ([]model.IllustCache, error) {
+	seen := make(map[int64]struct{})
+	var results []model.IllustCache
+
+	// 1. keyword 严格查询
+	kwRes, err := db.FindByKeyword(gid, keyword, limit, r18Req)
+	if err != nil {
+		return nil, err
+	}
+	for _, ill := range kwRes {
+		results = append(results, ill)
+		seen[ill.PID] = struct{}{}
+	}
+
+	// 已经满足 limit
+	if len(results) >= limit {
+		return results[:limit], nil
+	}
+
+	// 2. tag 查询补齐
+	need := limit - len(results)
+	tagRes, err := db.FindByTag(gid, keyword, need, r18Req)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, ill := range tagRes {
+		if _, ok := seen[ill.PID]; ok {
+			continue
+		}
+		results = append(results, ill)
+		seen[ill.PID] = struct{}{}
+		if len(results) >= limit {
+			break
+		}
+	}
+
+	return results, nil
 }
 
 func (db *DB) GetSentPictureIDs(gid int64) ([]int64, error) {
