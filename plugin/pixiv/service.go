@@ -18,7 +18,7 @@ type Service struct {
 	DB    *cache.DB
 	API   *api.PixivAPI
 	Proxy *proxy.Manager
-	// 内部任务锁：限制每个群同一时间只能执行一个请求
+	// 内部任务锁：限制每个人同一时间只能执行一个请求
 	taskMu sync.Mutex
 	tasks  map[int64]*taskState
 
@@ -87,7 +87,7 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache, gid in
 		go func() {
 			defer func() { <-downloadSem }()
 
-			img, err := s.API.Client.FetchPixivImage(ill1, ill1.OriginalURL, true)
+			img, err := s.API.Client.FetchPixivImage(ill1, ill1.OriginalURL)
 			fmt.Println("下载图片完成：", ill1.PID)
 			results <- DLResult{Ill: ill1, Img: img, Err: err}
 		}()

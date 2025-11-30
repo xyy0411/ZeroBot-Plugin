@@ -2,10 +2,22 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
 	"net/url"
 	"strings"
 )
+
+func replaceDomain(originalURL, newDomain string) (string, error) {
+	u, err := url.Parse(originalURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid URL: %w", err)
+	}
+
+	u.Host = newDomain
+
+	return u.String(), nil
+}
 
 func RemoveR18Keywords(keyword string) string {
 	if keyword == "" {

@@ -12,8 +12,6 @@ import (
 	"time"
 )
 
-const maxImageSize = 20 << 20
-
 // Client 封装 HTTP 客户端与 Pixiv 请求逻辑
 type Client struct {
 	*http.Client
@@ -23,18 +21,42 @@ func NewClient(proxyUrl string) *Client {
 	proxyURL, err := url.Parse(proxyUrl)
 	if err != nil {
 		log.Warning("连接代理错误:", err)
+		proxyURL = nil
+	}
+
+	var noProxyDomains = []string{
+		// 源自https://blog.yuki.sh/posts/599ec3ed8eda/
+		"i.yuki.sh",
+		// 源自https://i.muxmus.com/
+		"i.muxmus.com",
 	}
 
 	return &Client{
 		&http.Client{
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{MaxVersion: tls.VersionTLS13},
-				Proxy:           http.ProxyURL(proxyURL),
+				Proxy: func(req *http.Request) (*url.URL, error) {
+					host := req.URL.Hostname()
+
+					for _, d := range noProxyDomains {
+						if host == d {
+							return nil, nil
+						}
+					}
+
+					// 其它全部走代理
+					return proxyURL, nil
+				},
 			},
 			Timeout: time.Minute,
 		},
 	}
 }
+
+const (
+	yuki   = "i.yuki.sh"
+	muxmus = "i.muxmus.com"
+)
 
 func (c *Client) SearchPixivIllustrations(accessToken, url string) (*model.RootEntity, error) {
 	req, _ := http.NewRequest("GET", url, nil)
@@ -69,7 +91,7 @@ func (c *Client) SearchPixivIllustrations(accessToken, url string) (*model.RootE
 	return &result, nil
 }
 
-func (c *Client) FetchPixivImage(illust model.IllustCache, url string, preferOriginal ...bool) ([]byte, error) {
+func (c *Client) FetchPixivImage(illust model.IllustCache, url string) ([]byte, error) {
 	fmt.Println("下载", illust.PID)
 
 	if c == nil {
@@ -77,15 +99,17 @@ func (c *Client) FetchPixivImage(illust model.IllustCache, url string, preferOri
 		return nil, nil
 	}
 
-	preferOriginalFlag := false
-
-	if len(preferOriginal) > 0 {
-		preferOriginalFlag = preferOriginal[0]
+	replacedURL, err := replaceDomain(url, yuki)
+	if err != nil {
+		return nil, err
 	}
 
-	req, _ := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", replacedURL, nil)
+	if err != nil {
+		return nil, err
+	}
 
-	req.Header.Set("Referer", "https://www.pixiv.net/")
+	req.Header.Set("Referer", "https://"+yuki)
 	req.Header.Set("User-Agent", "PixivAndroidApp/5.0.234 (Android 11; Pixel 5)")
 
 	resp, err := c.Do(req)
@@ -99,12 +123,6 @@ func (c *Client) FetchPixivImage(illust model.IllustCache, url string, preferOri
 		return nil, fmt.Errorf("下载图片失败: HTTP %d", resp.StatusCode)
 	}
 
-	if !preferOriginalFlag {
-		// 如果图片 > 20mb 就下载缩略图
-		if resp.ContentLength > 0 && resp.ContentLength > maxImageSize {
-			return c.FetchPixivImage(illust, illust.ImageURL, preferOriginalFlag)
-		}
-	}
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err

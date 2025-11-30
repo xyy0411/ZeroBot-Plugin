@@ -101,7 +101,7 @@ func init() {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
 		}
-		img, err1 := service.API.Client.FetchPixivImage(*illust, illust.OriginalURL, true)
+		img, err1 := service.API.Client.FetchPixivImage(*illust, illust.OriginalURL)
 		if err1 != nil {
 			ctx.SendChain(message.Text("ERROR: ", err1))
 			return
@@ -210,7 +210,7 @@ func init() {
 			return
 		}
 		illust := illusts[0]
-		img, err := service.API.Client.FetchPixivImage(illust, illust.OriginalURL, true)
+		img, err := service.API.Client.FetchPixivImage(illust, illust.OriginalURL)
 		if err != nil {
 			ctx.SendChain(message.Text("发送涩图失败惹"))
 			return

@@ -18,8 +18,8 @@ func NewPixivAPI(refreshToken string, proxy string) *PixivAPI {
 	}
 }
 
-func (p *PixivAPI) FetchImage(illust model.IllustCache, url string, large bool) ([]byte, error) {
-	return p.Client.FetchPixivImage(illust, url, large)
+func (p *PixivAPI) FetchImage(illust model.IllustCache, url string) ([]byte, error) {
+	return p.Client.FetchPixivImage(illust, url)
 }
 
 func (p *PixivAPI) FetchPixivByPID(pid int64) (*model.IllustCache, error) {
