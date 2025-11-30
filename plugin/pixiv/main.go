@@ -85,7 +85,7 @@ func init() {
 
 	engine.OnRegex(`^p站搜图(\d+)`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		if !service.Acquire(ctx.Event.UserID) {
-			ctx.SendChain(message.Text("上一个任务还没结束，请稍后再试"))
+			ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text("上一个任务还没结束，请稍后再试"))
 			return
 		}
 		defer service.Release(ctx.Event.UserID)
@@ -130,7 +130,7 @@ func init() {
 
 	engine.OnRegex(`^(\d+)?张?画师(\d+)`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		if !service.Acquire(ctx.Event.UserID) {
-			ctx.SendChain(message.Text("上一个任务还没结束，请稍后再试"))
+			ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text("上一个任务还没结束，请稍后再试"))
 			return
 		}
 		defer service.Release(ctx.Event.UserID)
@@ -199,7 +199,7 @@ func init() {
 
 	engine.OnRegex(`^每日[色|涩|瑟]图$`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		if !service.Acquire(ctx.Event.UserID) {
-			ctx.SendChain(message.Text("上一个任务还没结束，请稍后再试"))
+			ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text("上一个任务还没结束，请稍后再试"))
 			return
 		}
 		defer service.Release(ctx.Event.UserID)
@@ -231,7 +231,7 @@ func init() {
 		keyword := ctx.State["regex_matched"].([]string)[2]
 
 		if !service.Acquire(ctx.Event.UserID) {
-			ctx.SendChain(message.Text("上一个任务还没结束，请稍后再试"))
+			ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text("上一个任务还没结束，请稍后再试"))
 			return
 		}
 		defer service.Release(ctx.Event.UserID)

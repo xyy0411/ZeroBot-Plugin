@@ -88,6 +88,7 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache, gid in
 			defer func() { <-downloadSem }()
 
 			img, err := s.API.Client.FetchPixivImage(ill1, ill1.OriginalURL, true)
+			fmt.Println("下载图片完成：", ill1.PID)
 			results <- DLResult{Ill: ill1, Img: img, Err: err}
 		}()
 	}
