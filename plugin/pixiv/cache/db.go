@@ -35,9 +35,7 @@ func (db *DB) FindByKeyword(gid int64, keyword string, limit int, r18Req bool) (
 		Order("bookmarks DESC").
 		Limit(limit)
 
-	if !r18Req {
-		query = query.Where("r18 = ?", false)
-	}
+	query = query.Where("r18 = ?", r18Req)
 
 	err := query.Find(&results).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -124,6 +122,15 @@ func (db *DB) FindIllustsSmart(gid int64, keyword string, limit int, r18Req bool
 	}
 
 	return results, nil
+}
+
+func (db *DB) GetIllustIDsByKeyword(keyword string) ([]int64, error) {
+	var illustIDs []int64
+	err := db.Model(&model.IllustCache{}).Where("keyword = ?", keyword).Pluck("pid", &illustIDs).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	return illustIDs, nil
 }
 
 func (db *DB) GetSentPictureIDs(gid int64) ([]int64, error) {

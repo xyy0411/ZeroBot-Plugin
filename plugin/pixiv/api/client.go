@@ -134,7 +134,7 @@ func (c *Client) FetchPixivImage(illust model.IllustCache, url string) ([]byte, 
 	}
 
 	// 1. 直连 Pixiv
-	data, status, err := c.fetchOnce(url, "https://www.pixiv.net")
+	data, status, err := c.fetchOnce(url, "https://www.pixiv.net/")
 	if err == nil && status == http.StatusOK {
 		return data, false, nil
 	}
@@ -142,6 +142,7 @@ func (c *Client) FetchPixivImage(illust model.IllustCache, url string) ([]byte, 
 		return nil, false, &HTTPStatusError{StatusCode: status, URL: url}
 	}
 
+	fmt.Println("下载失败:", illust.PID, "准备使用反向代理")
 	// 2. 反代兜底
 	fallbackHosts := []string{yuki, muxmus}
 	var lastStatus int

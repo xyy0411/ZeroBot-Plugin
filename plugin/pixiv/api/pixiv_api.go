@@ -19,10 +19,6 @@ func NewPixivAPI(refreshToken string, proxy string) *PixivAPI {
 	}
 }
 
-func (p *PixivAPI) FetchImage(illust model.IllustCache, url string) ([]byte, error) {
-	return p.Client.FetchPixivImage(illust, url)
-}
-
 func (p *PixivAPI) FetchPixivByPID(pid int64) (*model.IllustCache, error) {
 	url := fmt.Sprintf("https://app-api.pixiv.net/v1/illust/detail?illust_id=%d", pid)
 	accessToken, err := p.Token.GetAccessToken()

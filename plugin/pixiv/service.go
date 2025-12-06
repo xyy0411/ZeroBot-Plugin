@@ -122,7 +122,6 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache, gid in
 	for range illusts {
 		res := <-results
 
-		// 下载失败
 		if res.Err != nil {
 			var httpErr *api.HTTPStatusError
 			if errors.As(res.Err, &httpErr) && httpErr.StatusCode == http.StatusNotFound {
@@ -160,10 +159,9 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache, gid in
 			message.ImageBytes(res.Img),
 		)
 
-		// 图片已完全用完 → 这里立刻释放（最关键）
+		// 清空图片数据
 		res.Img = nil
 
-		// 写入发送记录
 		s.DB.Create(&model.SentImage{
 			GroupID: gid,
 			PID:     res.Ill.PID,
@@ -198,6 +196,8 @@ func (s *Service) BackgroundCacheFiller(keyword string, minCache int, r18Req boo
 			fmt.Println("后台补充缓存失败:", err)
 			return
 		}
+		s1, err := service.DB.GetIllustIDsByKeyword(keyword)
+		sendedcache = append(sendedcache, s1...)
 		newIllusts, err := service.API.FetchPixivIllusts(keyword, r18Req, fetchCount, sendedcache)
 		if err != nil {
 			fmt.Println("后台补充缓存失败:", err)
