@@ -2,38 +2,78 @@ package proxy
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	log "github.com/sirupsen/logrus"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/cache"
+	"github.com/jinzhu/gorm"
 )
 
-type Manager struct{}
+const (
+	currentIndexFile = "/root/v2ray/current_index.txt"
+	configFile       = "/usr/local/etc/v2ray/config.json"
+)
 
-func NewManager() *Manager {
-	return &Manager{}
+type Manager struct {
+	db *cache.DB
+}
+
+func NewManager(db *cache.DB) *Manager {
+	if err := db.AutoMigrate(&Node{}).Error; err != nil {
+		panic(err)
+	}
+
+	return &Manager{db: db}
+}
+
+// ListNodes 按插入顺序返回节点列表
+func (m *Manager) ListNodes() ([]Node, error) {
+	var nodes []Node
+	if err := m.db.Order("record_id").Find(&nodes).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("代理节点列表为空")
+		}
+		return nil, errors.Join(errors.New("读取代理节点失败 "), err)
+	}
+
+	if len(nodes) == 0 {
+		return nil, errors.New("代理节点列表为空")
+	}
+
+	return nodes, nil
+}
+
+// SwitchTo 手动切换到指定编号的节点（从 1 开始）
+func (m *Manager) SwitchTo(index int) (string, error) {
+	nodes, err := m.ListNodes()
+	if err != nil {
+		return "", err
+	}
+
+	if index < 1 || index > len(nodes) {
+		return "", fmt.Errorf("无效编号，范围 1-%d", len(nodes))
+	}
+
+	chosen := nodes[index-1]
+	if err := m.writeConfigAndRestart(chosen); err != nil {
+		return "", errors.Join(errors.New("切换节点失败 "), err)
+	}
+
+	return fmt.Sprintf("已切换到 #%d %s", index, chosen.Name), nil
 }
 
 // AutoSwitch 并发自动测试并切换
 func (m *Manager) AutoSwitch() (string, error) {
-	// load nodes.json
-	bs, err := os.ReadFile(nodesFile)
+	nodes, err := m.ListNodes()
 	if err != nil {
-		return "", errors.Join(errors.New("读取 nodes.json 失败 "), err)
-	}
-	var nodes []Node
-	if err := json.Unmarshal(bs, &nodes); err != nil {
-		return "", errors.Join(errors.New("解析 nodes.json 失败 "), err)
-	}
-	if len(nodes) == 0 {
-		return "", errors.New("nodes.json 为空")
+		return "", err
 	}
 
 	total := len(nodes)

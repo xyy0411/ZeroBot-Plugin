@@ -1,6 +1,7 @@
 package pixiv
 
 import (
+	"errors"
 	"fmt"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/api"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/cache"
@@ -13,8 +14,10 @@ import (
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
 	"math/rand"
+	"net/http"
 	"os"
 	"strconv"
+	"strings"
 )
 
 var defaultKeyword = []string{"萝莉", "御姐", "妹妹", "姐姐"}
@@ -39,7 +42,7 @@ func init() {
 	}
 
 	pixivAPI := api.NewPixivAPI(t1.Token, "http://127.0.0.1:10809")
-	manager := proxy.NewManager()
+	manager := proxy.NewManager(db)
 	service = NewService(db, pixivAPI, manager)
 }
 
@@ -48,7 +51,7 @@ func init() {
 	engine := control.AutoRegister(&ctrl.Options[*zero.Ctx]{
 		DisableOnDefault: false,
 		Brief:            "Pixiv 图片搜索",
-		Help:             "- [x张]涩图 [关键词]\n- 每日涩图\n- [x张]画师[画师的uid] \n- p站搜图[插画pid] \n[]为可忽略项\n可添加多个关键词每个关键词用空格隔开\n默认不发R-18如果要发就加一个R-18关键词",
+		Help:             "- [x张]涩图 [关键词]\n- 每日涩图\n- [x张]画师[画师的uid] \n- p站搜图[插画pid] \n- 下载代理<url>\n- 列出/手动切换代理节点：切换代理节点 [编号]\n- 自动切换代理节点\n[]为可忽略项\n可添加多个关键词每个关键词用空格隔开\n默认不发R-18如果要发就加一个R-18关键词",
 	})
 
 	engine.OnRegex(`^下载代理*(.+)`, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
@@ -60,7 +63,40 @@ func init() {
 		ctx.SendChain(message.Text("代理节点已更新"))
 	})
 
-	engine.OnFullMatch("切换代理节点", zero.SuperUserPermission).SetBlock(false).Handle(func(ctx *zero.Ctx) {
+	engine.OnRegex(`^切换代理节点(?:\s*(\d+))?$`, zero.SuperUserPermission).SetBlock(false).Handle(func(ctx *zero.Ctx) {
+		idxStr := strings.TrimSpace(ctx.State["regex_matched"].([]string)[1])
+		if idxStr == "" {
+			nodes, err := service.Proxy.ListNodes()
+			if err != nil {
+				ctx.SendChain(message.Text("ERROR: ", err))
+				return
+			}
+
+			var sb strings.Builder
+			sb.WriteString("可选代理节点：\n")
+			for i, n := range nodes {
+				sb.WriteString(fmt.Sprintf("#%d %s (%s:%s)\n", i+1, n.Name, n.Address, n.Port))
+			}
+			sb.WriteString("使用 \"切换代理节点 <编号>\" 进行切换")
+			ctx.SendChain(message.Text(sb.String()))
+			return
+		}
+
+		idx, err := strconv.Atoi(idxStr)
+		if err != nil {
+			ctx.SendChain(message.Text("ERROR: 无效编号"))
+			return
+		}
+
+		msg, err := service.Proxy.SwitchTo(idx)
+		if err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+		ctx.SendChain(message.Text(msg))
+	})
+
+	engine.OnFullMatch("自动切换代理节点", zero.SuperUserPermission).SetBlock(false).Handle(func(ctx *zero.Ctx) {
 		msg, err := service.Proxy.AutoSwitch()
 		if err != nil {
 			ctx.SendChain(message.Text("ERROR: ", err))
@@ -101,10 +137,15 @@ func init() {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
 		}
-		img, err1 := service.API.Client.FetchPixivImage(*illust, illust.OriginalURL)
+		img, usedFallback, err1 := service.API.Client.FetchPixivImage(*illust, illust.OriginalURL)
 		if err1 != nil {
-			ctx.SendChain(message.Text("ERROR: ", err1))
+			service.handleDownloadError(ctx, *illust, err1, usedFallback,
+				fmt.Sprintf("图片已被删除，已移除缓存，PID: %d", illust.PID),
+				"ERROR: ")
 			return
+		}
+		if usedFallback {
+			service.triggerAutoSwitch()
 		}
 		// tags的类型是json格式所以就不设置keyword了
 		_ = service.DB.Create(illust)
@@ -168,10 +209,15 @@ func init() {
 
 			_ = service.DB.Create(illust)
 
-			img, err1 := service.API.Client.FetchPixivImage(illust, illust.OriginalURL)
+			img, usedFallback, err1 := service.API.Client.FetchPixivImage(illust, illust.OriginalURL)
 			if err1 != nil {
-				ctx.SendChain(message.Text("ERROR: ", err1))
+				service.handleDownloadError(ctx, illust, err1, usedFallback,
+					fmt.Sprintf("图片已被删除，已移除缓存，PID: %d", illust.PID),
+					"ERROR: ")
 				continue
+			}
+			if usedFallback {
+				service.triggerAutoSwitch()
 			}
 			fmt.Println("获取", illust.PID, "成功，准备发送！", float64(len(img))/1024/1024, "mb")
 			if msgID := ctx.SendChain(message.Text(
@@ -210,10 +256,15 @@ func init() {
 			return
 		}
 		illust := illusts[0]
-		img, err := service.API.Client.FetchPixivImage(illust, illust.OriginalURL)
+		img, usedFallback, err := service.API.Client.FetchPixivImage(illust, illust.OriginalURL)
 		if err != nil {
-			ctx.SendChain(message.Text("发送涩图失败惹"))
+			service.handleDownloadError(ctx, illust, err, usedFallback,
+				fmt.Sprintf("发送涩图失败惹，图片已被删除，已移除缓存，PID: %d", illust.PID),
+				"发送涩图失败惹: ")
 			return
+		}
+		if usedFallback {
+			service.triggerAutoSwitch()
 		}
 		ctx.SendChain(message.Text(
 			"PID:", illust.PID,
@@ -257,13 +308,17 @@ func init() {
 
 		r18Req := api.IsR18(keyword)
 		cleanKeyword := api.RemoveR18Keywords(keyword)
+		storageKeyword := cleanKeyword
+		if storageKeyword == "" && r18Req {
+			storageKeyword = "R-18"
+		}
 
 		gid := ctx.Event.GroupID
 		if gid == 0 {
 			gid = -ctx.Event.UserID
 		}
 
-		cachedIllusts, err := service.DB.FindIllustsSmart(gid, keyword, limitInt, r18Req)
+		cachedIllusts, err := service.DB.FindIllustsSmart(gid, storageKeyword, limitInt, r18Req)
 		if err != nil {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
@@ -289,6 +344,6 @@ func init() {
 
 		service.SendIllusts(ctx, illusts, gid)
 
-		service.BackgroundCacheFiller(cleanKeyword, 15, r18Req, 5, ctx.Event.GroupID)
+		service.BackgroundCacheFiller(storageKeyword, 15, r18Req, 5, ctx.Event.GroupID)
 	})
 }
