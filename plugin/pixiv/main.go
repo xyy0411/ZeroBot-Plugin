@@ -1,6 +1,7 @@
 package pixiv
 
 import (
+	"errors"
 	"fmt"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/api"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/cache"
@@ -13,6 +14,7 @@ import (
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
 	"math/rand"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -135,10 +137,20 @@ func init() {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
 		}
-		img, err1 := service.API.Client.FetchPixivImage(*illust, illust.OriginalURL)
+		img, usedFallback, err1 := service.API.Client.FetchPixivImage(*illust, illust.OriginalURL)
 		if err1 != nil {
+			var httpErr *api.HTTPStatusError
+			if errors.As(err1, &httpErr) && httpErr.StatusCode == http.StatusNotFound {
+				_ = service.DB.DeleteIllustByPID(illust.PID)
+			}
 			ctx.SendChain(message.Text("ERROR: ", err1))
+			if usedFallback {
+				service.triggerAutoSwitch()
+			}
 			return
+		}
+		if usedFallback {
+			service.triggerAutoSwitch()
 		}
 		// tags的类型是json格式所以就不设置keyword了
 		_ = service.DB.Create(illust)
@@ -202,10 +214,20 @@ func init() {
 
 			_ = service.DB.Create(illust)
 
-			img, err1 := service.API.Client.FetchPixivImage(illust, illust.OriginalURL)
+			img, usedFallback, err1 := service.API.Client.FetchPixivImage(illust, illust.OriginalURL)
 			if err1 != nil {
+				var httpErr *api.HTTPStatusError
+				if errors.As(err1, &httpErr) && httpErr.StatusCode == http.StatusNotFound {
+					_ = service.DB.DeleteIllustByPID(illust.PID)
+				}
 				ctx.SendChain(message.Text("ERROR: ", err1))
+				if usedFallback {
+					service.triggerAutoSwitch()
+				}
 				continue
+			}
+			if usedFallback {
+				service.triggerAutoSwitch()
 			}
 			fmt.Println("获取", illust.PID, "成功，准备发送！", float64(len(img))/1024/1024, "mb")
 			if msgID := ctx.SendChain(message.Text(
@@ -244,10 +266,20 @@ func init() {
 			return
 		}
 		illust := illusts[0]
-		img, err := service.API.Client.FetchPixivImage(illust, illust.OriginalURL)
+		img, usedFallback, err := service.API.Client.FetchPixivImage(illust, illust.OriginalURL)
 		if err != nil {
+			var httpErr *api.HTTPStatusError
+			if errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusNotFound {
+				_ = service.DB.DeleteIllustByPID(illust.PID)
+			}
 			ctx.SendChain(message.Text("发送涩图失败惹"))
+			if usedFallback {
+				service.triggerAutoSwitch()
+			}
 			return
+		}
+		if usedFallback {
+			service.triggerAutoSwitch()
 		}
 		ctx.SendChain(message.Text(
 			"PID:", illust.PID,

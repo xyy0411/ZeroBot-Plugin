@@ -12,6 +12,16 @@ import (
 	"time"
 )
 
+// HTTPStatusError 捕获图片下载时的 HTTP 状态码
+type HTTPStatusError struct {
+	StatusCode int
+	URL        string
+}
+
+func (e *HTTPStatusError) Error() string {
+	return fmt.Sprintf("下载图片失败: HTTP %d", e.StatusCode)
+}
+
 // Client 封装 HTTP 客户端与 Pixiv 请求逻辑
 type Client struct {
 	*http.Client
@@ -91,53 +101,83 @@ func (c *Client) SearchPixivIllustrations(accessToken, url string) (*model.RootE
 	return &result, nil
 }
 
-func (c *Client) FetchPixivImage(illust model.IllustCache, url string) ([]byte, error) {
-	fmt.Println("下载", illust.PID)
-
-	if c == nil {
-		fmt.Println("FetchPixivImage called on nil IllustCache")
-		return nil, nil
-	}
-
-	replacedURL, err := replaceDomain(url, yuki)
+func (c *Client) fetchOnce(targetURL, referer string) ([]byte, int, error) {
+	req, err := http.NewRequest("GET", targetURL, nil)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	req, err := http.NewRequest("GET", replacedURL, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Referer", "https://"+yuki)
+	req.Header.Set("Referer", referer)
 	req.Header.Set("User-Agent", "PixivAndroidApp/5.0.234 (Android 11; Pixel 5)")
 
 	resp, err := c.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("请求失败: %w", err)
+		return nil, 0, fmt.Errorf("请求失败: %w", err)
 	}
-
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("下载图片失败: HTTP %d", resp.StatusCode)
-	}
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, resp.StatusCode, err
 	}
 
-	// 用base64发成功概率很小
-	/*	var builder strings.Builder
-		builder.WriteString("base64://")
-		base64Encoder := base64.NewEncoder(base64.StdEncoding, &builder)
-		base64Encoder.Close()
+	return data, resp.StatusCode, nil
+}
 
-		_, err = io.Copy(base64Encoder, resp.Body)
+// FetchPixivImage 优先直连 P 站下载，失败后依次使用反代重试
+func (c *Client) FetchPixivImage(illust model.IllustCache, url string) ([]byte, bool, error) {
+	fmt.Println("下载", illust.PID)
+
+	if c == nil {
+		fmt.Println("FetchPixivImage called on nil IllustCache")
+		return nil, false, nil
+	}
+
+	// 1. 直连 Pixiv
+	data, status, err := c.fetchOnce(url, "https://www.pixiv.net")
+	if err == nil && status == http.StatusOK {
+		return data, false, nil
+	}
+	if status == http.StatusNotFound {
+		return nil, false, &HTTPStatusError{StatusCode: status, URL: url}
+	}
+
+	// 2. 反代兜底
+	fallbackHosts := []string{yuki, muxmus}
+	var lastStatus int
+	var lastErr error
+
+	for _, host := range fallbackHosts {
+		replacedURL, err := replaceDomain(url, host)
 		if err != nil {
-			return "", err
-		}*/
+			lastErr = err
+			continue
+		}
 
-	return data, nil
+		data, status, err = c.fetchOnce(replacedURL, "https://"+host)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		if status == http.StatusOK {
+			return data, true, nil
+		}
+
+		if status == http.StatusNotFound {
+			return nil, true, &HTTPStatusError{StatusCode: status, URL: replacedURL}
+		}
+
+		lastStatus = status
+	}
+
+	if lastErr != nil {
+		return nil, true, lastErr
+	}
+
+	if lastStatus != 0 {
+		return nil, true, &HTTPStatusError{StatusCode: lastStatus, URL: url}
+	}
+
+	return nil, true, fmt.Errorf("下载图片失败")
 }
