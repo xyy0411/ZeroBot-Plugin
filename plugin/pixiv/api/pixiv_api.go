@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
+	"sort"
 )
 
 type PixivAPI struct {
@@ -143,12 +144,14 @@ func (p *PixivAPI) fetchPixivCommon(
 		return nil, err
 	}
 
-	results := make([]model.IllustCache, 0, limit)
-	seen := make(map[int64]struct{})
+	// 高质量图（≥1000）
+	high := make([]model.IllustCache, 0, limit)
+	// 低质量图（<1000）
+	low := make([]model.IllustCache, 0, limit)
 
+	seen := make(map[int64]struct{})
 	url := firstURL
 
-	// 第一级：优先找高质量图（≥ 1000 收藏）
 	for url != "" {
 		rawData, err := p.Client.SearchPixivIllustrations(accessToken, url)
 		if err != nil {
@@ -166,12 +169,13 @@ func (p *PixivAPI) fetchPixivCommon(
 					continue
 				}
 			}
+			seen[raw.Id] = struct{}{}
 
+			// 转换
 			ill, err := convertToIllustCache(raw)
 			if err != nil {
 				continue
 			}
-
 			if len(keywords) > 0 {
 				ill.Keyword = keywords[0]
 			}
@@ -181,63 +185,38 @@ func (p *PixivAPI) fetchPixivCommon(
 				continue
 			}
 
-			seen[raw.Id] = struct{}{}
-
-			// 只要达到 limit 直接返回
+			// 判断高质量
 			if ill.Bookmarks >= 1000 {
-				results = append(results, *ill)
-				if len(results) >= limit {
-					return results[:limit], nil
+				high = append(high, *ill)
+				// 高质量够了就直接返回
+				if len(high) >= limit {
+					return high[:limit], nil
 				}
+			} else {
+				// 低质量池还没满 → 接受
+				if len(low) <= limit {
+					low = append(low, *ill)
+				}
+				// 低质量够 limit 就不再放入，避免爆炸增长
 			}
 		}
 
+		// 下一页继续
 		url = rawData.NextUrl
 	}
 
-	// 第二级：低质量图补足 limit（从头开始重新扫描）
-	url = firstURL
-	for len(results) < limit && url != "" {
+	// ==== 翻页结束：如果高质量不足，就从低质量中挑收藏最多的 ====
 
-		rawData, err := p.Client.SearchPixivIllustrations(accessToken, url)
-		if err != nil {
-			return results, nil
-		}
+	// 低质量排序（按收藏数倒序）
+	sort.Slice(low, func(i, j int) bool {
+		return low[i].Bookmarks > low[j].Bookmarks
+	})
 
-		for _, raw := range rawData.Illusts {
-			if _, ok := seen[raw.Id]; ok {
-				continue
-			}
-			if excludeCache != nil {
-				if _, ok := excludeCache[raw.Id]; ok {
-					continue
-				}
-			}
-
-			ill, err := convertToIllustCache(raw)
-			if err != nil {
-				continue
-			}
-
-			if len(keywords) > 0 {
-				ill.Keyword = keywords[0]
-			}
-
-			if isR18Req != nil && ill.R18 != *isR18Req {
-				continue
-			}
-
-			seen[raw.Id] = struct{}{}
-
-			// 随便补几张得了
-			results = append(results, *ill)
-			if len(results) >= limit {
-				return results[:limit], nil
-			}
-		}
-
-		url = rawData.NextUrl
+	// 用低质量中的高质量去补齐不足的图
+	all := append(high, low...)
+	if len(all) > limit {
+		all = all[:limit]
 	}
 
-	return results, nil
+	return all, nil
 }
