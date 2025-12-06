@@ -134,3 +134,8 @@ func (db *DB) GetSentPictureIDs(gid int64) ([]int64, error) {
 	}
 	return pictureIDs, nil
 }
+
+// DeleteIllustByPID 删除指定 PID 的插画缓存记录
+func (db *DB) DeleteIllustByPID(pid int64) error {
+	return db.Where("pid = ?", pid).Delete(&model.IllustCache{}).Error
+}

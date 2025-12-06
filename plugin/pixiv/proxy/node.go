@@ -9,31 +9,30 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 )
 
-const (
-	nodesFile        = "/root/v2ray/nodes.json"
-	currentIndexFile = "/root/v2ray/current_index.txt"
-	configFile       = "/usr/local/etc/v2ray/config.json"
-)
-
 // Node 通用节点结构
 type Node struct {
+	RecordID uint `gorm:"primary_key" json:"-"`
+
 	Protocol string `json:"protocol"`
 	Name     string `json:"name"`
 	Address  string `json:"address"`
 	Port     string `json:"port"`
-	ID       string `json:"id"`
+	ID       string `json:"id" gorm:"column:node_id"`
 	Network  string `json:"network"`
 	Host     string `json:"host"`
 	Path     string `json:"path"`
 	TLS      string `json:"tls"`
 	Sni      string `json:"sni"`
 
-	DelayMs float64 `json:"-"`
+	DelayMs float64 `json:"-" gorm:"-"`
+}
+
+func (Node) TableName() string {
+	return "pixiv_proxy_nodes"
 }
 
 func (m *Manager) DownloadingNode(url string) error {
@@ -56,17 +55,24 @@ func (m *Manager) DownloadingNode(url string) error {
 	if err != nil {
 		return err
 	}
-	nodesBytes, err := json.Marshal(nodes)
-	if err != nil {
+
+	tx := m.db.Begin()
+	if err := tx.Error; err != nil {
 		return err
 	}
-	openFile, err := os.OpenFile(nodesFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
+
+	if err := tx.Delete(&Node{}).Error; err != nil {
+		tx.Rollback()
 		return err
 	}
-	defer openFile.Close()
-	_, err = openFile.Write(nodesBytes)
-	return err
+	if len(nodes) > 0 {
+		if err := tx.Create(&nodes).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+
+	return tx.Commit().Error
 }
 
 // 解析 VMess 节点

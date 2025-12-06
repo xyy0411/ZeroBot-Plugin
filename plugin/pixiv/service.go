@@ -1,6 +1,7 @@
 package pixiv
 
 import (
+	"errors"
 	"fmt"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/api"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/cache"
@@ -8,7 +9,9 @@ import (
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/proxy"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
+	"net/http"
 	"sync"
+	"sync/atomic"
 )
 
 var cacheFilling sync.Map
@@ -25,6 +28,8 @@ type Service struct {
 	// 并发控制
 	DownloadWorkers int
 	SendWorkers     int
+
+	autoSwitching int32
 }
 
 type taskState struct {
@@ -69,12 +74,32 @@ func (s *Service) Release(userID int64) {
 	delete(s.tasks, userID)
 }
 
+func (s *Service) triggerAutoSwitch() {
+	if s.Proxy == nil {
+		return
+	}
+
+	if !atomic.CompareAndSwapInt32(&s.autoSwitching, 0, 1) {
+		return
+	}
+
+	go func() {
+		defer atomic.StoreInt32(&s.autoSwitching, 0)
+		if msg, err := s.Proxy.AutoSwitch(); err != nil {
+			fmt.Println("自动切换代理节点失败:", err)
+		} else {
+			fmt.Println("自动切换代理节点完成:\n" + msg)
+		}
+	}()
+}
+
 func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache, gid int64) {
 	downloadSem := make(chan struct{}, s.DownloadWorkers)
 	type DLResult struct {
-		Ill model.IllustCache
-		Img []byte
-		Err error
+		Ill      model.IllustCache
+		Img      []byte
+		Err      error
+		Fallback bool
 	}
 
 	results := make(chan DLResult, len(illusts))
@@ -87,9 +112,9 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache, gid in
 		go func() {
 			defer func() { <-downloadSem }()
 
-			img, err := s.API.Client.FetchPixivImage(ill1, ill1.OriginalURL)
+			img, usedFallback, err := s.API.Client.FetchPixivImage(ill1, ill1.OriginalURL)
 			fmt.Println("下载图片完成：", ill1.PID)
-			results <- DLResult{Ill: ill1, Img: img, Err: err}
+			results <- DLResult{Ill: ill1, Img: img, Err: err, Fallback: usedFallback}
 		}()
 	}
 
@@ -99,8 +124,26 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache, gid in
 
 		// 下载失败
 		if res.Err != nil {
-			ctx.SendChain(message.Text("下载失败: ", res.Err))
+			var httpErr *api.HTTPStatusError
+			if errors.As(res.Err, &httpErr) && httpErr.StatusCode == http.StatusNotFound {
+				if err := s.DB.DeleteIllustByPID(res.Ill.PID); err != nil {
+					ctx.SendChain(message.Text("清理已失效图片失败: ", err))
+				} else {
+					ctx.SendChain(message.Text("图片已被删除，已移除缓存，PID: ", res.Ill.PID))
+				}
+			} else {
+				ctx.SendChain(message.Text("下载失败: ", res.Err))
+			}
+
+			if res.Fallback {
+				s.triggerAutoSwitch()
+			}
+
 			continue
+		}
+
+		if res.Fallback {
+			s.triggerAutoSwitch()
 		}
 
 		// 发送消息（顺序执行，不开 goroutine）
