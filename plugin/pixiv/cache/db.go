@@ -26,7 +26,7 @@ func NewDB(path string) *DB {
 	sqlDB.SetMaxIdleConns(5)
 	sqlDB.SetConnMaxLifetime(time.Hour)
 	db.LogMode(false)
-	return &DB{db}
+	return &DB{db, sync.Mutex{}}
 }
 
 func (db *DB) FindByKeyword(gid int64, keyword string, limit int, r18Req bool) ([]model.IllustCache, error) {
