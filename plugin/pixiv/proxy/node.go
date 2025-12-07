@@ -66,9 +66,12 @@ func (m *Manager) DownloadingNode(url string) error {
 		return err
 	}
 	if len(nodes) > 0 {
-		if err := tx.Create(&nodes).Error; err != nil {
-			tx.Rollback()
-			return err
+		for i := range nodes {
+			node := nodes[i]
+			if err := tx.Create(&node).Error; err != nil {
+				tx.Rollback()
+				return err
+			}
 		}
 	}
 
