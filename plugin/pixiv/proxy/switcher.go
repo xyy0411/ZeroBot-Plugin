@@ -48,6 +48,31 @@ func (m *Manager) ListNodes() ([]model.Node, error) {
 	return nodes, nil
 }
 
+// ListNodesWithDelay 返回带测速结果的节点列表（不切换）
+func (m *Manager) ListNodesWithDelay(timeout time.Duration) ([]model.Node, error) {
+	nodes, err := m.ListNodes()
+	if err != nil {
+		return nil, err
+	}
+
+	var wg sync.WaitGroup
+	for i := range nodes {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			delay, err := testNode(nodes[idx], timeout)
+			if err != nil {
+				nodes[idx].DelayMs = -1
+				return
+			}
+			nodes[idx].DelayMs = delay
+		}(i)
+	}
+	wg.Wait()
+
+	return nodes, nil
+}
+
 // SwitchTo 手动切换到指定编号的节点（从 1 开始）
 func (m *Manager) SwitchTo(index int) (string, error) {
 	nodes, err := m.ListNodes()
@@ -83,19 +108,26 @@ func (m *Manager) AutoSwitch() (string, error) {
 	results := make(chan model.Node, len(nodes))
 	var wg sync.WaitGroup
 
-	var msg strings.Builder
+	var (
+		msg     strings.Builder
+		msgLock sync.Mutex
+	)
 	for _, n := range nodes {
 		wg.Add(1)
 		go func(nd model.Node) {
 			defer wg.Done()
 			delay, err := testNode(nd, timeout)
 			if err != nil {
+				msgLock.Lock()
 				msg.WriteString(fmt.Sprintf("❌ %s 不可用: %v\n", nd.Name, err))
+				msgLock.Unlock()
 				atomic.AddInt32(&failCount, 1)
 				return
 			}
 			nd.DelayMs = delay
+			msgLock.Lock()
 			msg.WriteString(fmt.Sprintf("✅ %s 可用，延迟 %.1fms\n", nd.Name, nd.DelayMs))
+			msgLock.Unlock()
 			atomic.AddInt32(&okCount, 1)
 			results <- nd
 		}(n)
