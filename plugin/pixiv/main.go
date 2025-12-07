@@ -10,6 +10,7 @@ import (
 	"github.com/FloatTech/floatbox/file"
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
+	"github.com/FloatTech/zbputils/ctxext"
 	log "github.com/sirupsen/logrus"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
@@ -18,6 +19,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var defaultKeyword = []string{"萝莉", "御姐", "妹妹", "姐姐"}
@@ -66,19 +68,30 @@ func init() {
 	engine.OnRegex(`^切换代理节点(?:\s*(\d+))?$`, zero.SuperUserPermission).SetBlock(false).Handle(func(ctx *zero.Ctx) {
 		idxStr := strings.TrimSpace(ctx.State["regex_matched"].([]string)[1])
 		if idxStr == "" {
-			nodes, err := service.Proxy.ListNodes()
+			nodes, err := service.Proxy.ListNodesWithDelay(4 * time.Second)
 			if err != nil {
 				ctx.SendChain(message.Text("ERROR: ", err))
 				return
 			}
 
-			var sb strings.Builder
-			sb.WriteString("可选代理节点：\n")
+			msgs := message.Message{ctxext.FakeSenderForwardNode(ctx, message.Text("可选代理节点（自动测速）："))}
 			for i, n := range nodes {
-				sb.WriteString(fmt.Sprintf("#%d %s (%s:%s)\n", i+1, n.Name, n.Address, n.Port))
+				status := "测速失败"
+				if n.DelayMs >= 0 {
+					status = fmt.Sprintf("延迟 %.1fms", n.DelayMs)
+				}
+				nodeInfo := fmt.Sprintf("#%d %s\n地址：%s:%s\n网络：%s\nTLS：%s\n状态：%s", i+1, n.Name, n.Address, n.Port, n.Network, n.TLS, status)
+				msgs = append(msgs, ctxext.FakeSenderForwardNode(ctx, message.Text(nodeInfo)))
 			}
-			sb.WriteString("使用 \"切换代理节点 <编号>\" 进行切换")
-			ctx.SendChain(message.Text(sb.String()))
+			msgs = append(msgs, ctxext.FakeSenderForwardNode(ctx, message.Text("使用 \"切换代理节点 <编号>\" 进行切换")))
+
+			if ctx.Event.GroupID != 0 {
+				if ctx.SendGroupForwardMessage(ctx.Event.GroupID, msgs).Get("message_id").Int() == 0 {
+					ctx.SendChain(message.Text("ERROR: 发送节点列表失败，可能被风控"))
+				}
+			} else {
+				ctx.SendPrivateForwardMessage(ctx.Event.UserID, msgs)
+			}
 			return
 		}
 
