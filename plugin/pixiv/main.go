@@ -65,7 +65,7 @@ func init() {
 		ctx.SendChain(message.Text("代理节点已更新"))
 	})
 
-	engine.OnRegex(`^切换代理节点(?:\s*(\d+))?$`, zero.SuperUserPermission).SetBlock(false).Handle(func(ctx *zero.Ctx) {
+	engine.OnRegex(`^切换代理节点(?:\s*(\d+))?$`, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		idxStr := strings.TrimSpace(ctx.State["regex_matched"].([]string)[1])
 		if idxStr == "" {
 			nodes, err := service.Proxy.ListNodesWithDelay(4 * time.Second)
@@ -85,14 +85,9 @@ func init() {
 			}
 			msgs = append(msgs, ctxext.FakeSenderForwardNode(ctx, message.Text("使用 \"切换代理节点 <编号>\" 进行切换")))
 
-			if ctx.Event.GroupID != 0 {
-				if ctx.SendGroupForwardMessage(ctx.Event.GroupID, msgs).Get("message_id").Int() == 0 {
-					ctx.SendChain(message.Text("ERROR: 发送节点列表失败，可能被风控"))
-				}
-			} else {
-				ctx.SendPrivateForwardMessage(ctx.Event.UserID, msgs)
+			if ctx.Send(msgs).ID() == 0 {
+				ctx.SendChain(message.Text("ERROR: 发送节点列表失败，可能被风控"))
 			}
-			return
 		}
 
 		idx, err := strconv.Atoi(idxStr)
@@ -223,47 +218,8 @@ func init() {
 			ctx.SendChain(message.Text("没有找到图片"))
 			return
 		}
-		for _, illust := range illustInfos {
 
-			_ = service.DB.Create(illust)
-
-			img, usedFallback, err1 := service.API.Client.FetchPixivImage(illust, illust.OriginalURL)
-			if err1 != nil {
-				var httpErr *api.HTTPStatusError
-				if errors.As(err1, &httpErr) && httpErr.StatusCode == http.StatusNotFound {
-					_ = service.DB.DeleteIllustByPID(illust.PID)
-				}
-				ctx.SendChain(message.Text("ERROR: ", err1))
-				if usedFallback {
-					service.triggerAutoSwitch()
-				}
-				continue
-			}
-			if usedFallback {
-				service.triggerAutoSwitch()
-			}
-			fmt.Println("获取", illust.PID, "成功，准备发送！", float64(len(img))/1024/1024, "mb")
-			if msgID := ctx.SendChain(message.Text(
-				"PID:", illust.PID,
-				"\n标题:", illust.Title,
-				"\n画师:", illust.AuthorName,
-				"\ntag:", illust.Tags,
-				"\n收藏数:", illust.Bookmarks,
-				"\n预览数:", illust.TotalView,
-				"\n发布时间:", illust.CreateDate,
-			), message.ImageBytes(img)); msgID.ID() <= 0 {
-				ctx.SendChain(message.Text("图片发送失败"))
-				continue
-			}
-			sent := model.SentImage{
-				GroupID: ctx.Event.GroupID,
-				PID:     illust.PID,
-			}
-
-			if err = service.DB.Save(&sent).Error; err != nil {
-				ctx.SendChain(message.Text("ERROR: ", err))
-			}
-		}
+		service.SendIllusts(ctx, illustInfos)
 	})
 
 	engine.OnRegex(`^每日[色|涩|瑟]图$`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
@@ -367,7 +323,7 @@ func init() {
 			_ = service.DB.Create(&illust).Error
 		}
 
-		service.SendIllusts(ctx, illusts, gid)
+		service.SendIllusts(ctx, illusts)
 
 		service.BackgroundCacheFiller(cleanKeyword, 10, r18Req, 5, ctx.Event.GroupID)
 	})

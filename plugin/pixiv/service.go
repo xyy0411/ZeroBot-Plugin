@@ -93,13 +93,18 @@ func (s *Service) triggerAutoSwitch() {
 	}()
 }
 
-func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache, gid int64) {
+func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 	downloadSem := make(chan struct{}, s.DownloadWorkers)
 	type DLResult struct {
 		Ill      model.IllustCache
 		Img      []byte
 		Err      error
 		Fallback bool
+	}
+
+	gid := ctx.Event.GroupID
+	if gid == 0 {
+		gid = -ctx.Event.UserID
 	}
 
 	results := make(chan DLResult, len(illusts))
@@ -154,7 +159,7 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache, gid in
 				"\ntag:", res.Ill.Tags,
 				"\n收藏数:", res.Ill.Bookmarks,
 				"\n浏览数:", res.Ill.TotalView,
-				"\n时间:", res.Ill.CreateDate,
+				"\n发布时间:", res.Ill.CreateDate,
 			),
 			message.ImageBytes(res.Img),
 		)
@@ -191,14 +196,14 @@ func (s *Service) BackgroundCacheFiller(keyword string, minCache int, r18Req boo
 
 		fmt.Printf("后台补充关键词 %s, 数量 %d\n", keyword, fetchCount)
 
-		sendedcache, err := service.DB.GetSentPictureIDs(gid)
+		sendedcache, err := s.DB.GetSentPictureIDs(gid)
 		if err != nil {
 			fmt.Println("后台补充缓存失败:", err)
 			return
 		}
-		s1, err := service.DB.GetIllustIDsByKeyword(keyword)
+		s1, err := s.DB.GetIllustIDsByKeyword(keyword)
 		sendedcache = append(sendedcache, s1...)
-		newIllusts, err := service.API.FetchPixivIllusts(keyword, r18Req, fetchCount, sendedcache)
+		newIllusts, err := s.API.FetchPixivIllusts(keyword, r18Req, fetchCount, sendedcache)
 		if err != nil {
 			fmt.Println("后台补充缓存失败:", err)
 
