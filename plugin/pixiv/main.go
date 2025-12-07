@@ -329,7 +329,8 @@ func init() {
 			gid = -ctx.Event.UserID
 		}
 
-		cachedIllusts, err := service.DB.FindIllustsSmart(gid, keyword, limitInt, r18Req)
+		// 数据库中的 keyword 在缓存时已经去除了 R-18 关键词，因此查询时使用去除后的关键词
+		cachedIllusts, err := service.DB.FindIllustsSmart(gid, cleanKeyword, limitInt, r18Req)
 		if err != nil {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
