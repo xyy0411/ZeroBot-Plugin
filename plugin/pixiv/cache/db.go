@@ -4,11 +4,13 @@ import (
 	"errors"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
 	"github.com/jinzhu/gorm"
+	"sync"
 	"time"
 )
 
 type DB struct {
 	*gorm.DB
+	mu sync.Mutex
 }
 
 func NewDB(path string) *DB {
@@ -28,6 +30,9 @@ func NewDB(path string) *DB {
 }
 
 func (db *DB) FindByKeyword(gid int64, keyword string, limit int, r18Req bool) ([]model.IllustCache, error) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
 	var results []model.IllustCache
 	query := db.Model(&model.IllustCache{}).
 		Where("keyword = ?", keyword).
@@ -48,6 +53,9 @@ func (db *DB) FindByTag(gid int64, tag string, needed int, r18Req bool) ([]model
 	if needed <= 0 {
 		return nil, nil
 	}
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
 	var results []model.IllustCache
 
 	query := db.Model(&model.IllustCache{}).
@@ -68,6 +76,9 @@ func (db *DB) FindByTag(gid int64, tag string, needed int, r18Req bool) ([]model
 	return results, nil
 }
 func (db *DB) CountIllustsSmart(gid int64, keyword string, r18Req bool) (int64, error) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
 	var count int64
 
 	query := db.Model(&model.IllustCache{}).
@@ -125,6 +136,9 @@ func (db *DB) FindIllustsSmart(gid int64, keyword string, limit int, r18Req bool
 }
 
 func (db *DB) GetIllustIDsByKeyword(keyword string) ([]int64, error) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
 	var illustIDs []int64
 	err := db.Model(&model.IllustCache{}).Where("keyword = ?", keyword).Pluck("pid", &illustIDs).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -134,6 +148,9 @@ func (db *DB) GetIllustIDsByKeyword(keyword string) ([]int64, error) {
 }
 
 func (db *DB) GetSentPictureIDs(gid int64) ([]int64, error) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
 	var pictureIDs []int64
 	err := db.Model(&model.SentImage{}).Where("group_id = ?", gid).Pluck("pid", &pictureIDs).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -144,5 +161,32 @@ func (db *DB) GetSentPictureIDs(gid int64) ([]int64, error) {
 
 // DeleteIllustByPID 删除指定 PID 的插画缓存记录
 func (db *DB) DeleteIllustByPID(pid int64) error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
 	return db.Where("pid = ?", pid).Delete(&model.IllustCache{}).Error
+}
+
+// Create wraps gorm.DB.Create with a mutex to avoid SQLITE_BUSY when requests are concurrent.
+func (db *DB) Create(value interface{}) *gorm.DB {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	return db.DB.Create(value)
+}
+
+// Save wraps gorm.DB.Save with a mutex to avoid SQLITE_BUSY when requests are concurrent.
+func (db *DB) Save(value interface{}) *gorm.DB {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	return db.DB.Save(value)
+}
+
+// Delete wraps gorm.DB.Delete with a mutex to avoid SQLITE_BUSY when requests are concurrent.
+func (db *DB) Delete(value interface{}, where ...interface{}) *gorm.DB {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	return db.DB.Delete(value, where...)
 }
