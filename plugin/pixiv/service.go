@@ -211,9 +211,8 @@ func (s *Service) BackgroundCacheFiller(keyword string, minCache int, r18Req boo
 		}
 
 		for _, illust := range newIllusts {
+			s.DB.Create(&illust)
 			fmt.Println("后台补充缓存：", illust.PID)
-			err = s.DB.Create(&illust).Error
-			fmt.Println("err:", err)
 		}
 
 		fmt.Printf("后台成功补充 %d 张图片到关键词 %s 缓存\n", len(newIllusts), keyword)

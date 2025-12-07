@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
 	"io"
 	"net"
 	"net/http"
@@ -12,28 +13,6 @@ import (
 	"strings"
 	"time"
 )
-
-// Node 通用节点结构
-type Node struct {
-	RecordID uint `gorm:"primary_key" json:"-"`
-
-	Protocol string `json:"protocol"`
-	Name     string `json:"name"`
-	Address  string `json:"address"`
-	Port     string `json:"port"`
-	ID       string `json:"id" gorm:"column:node_id"`
-	Network  string `json:"network"`
-	Host     string `json:"host"`
-	Path     string `json:"path"`
-	TLS      string `json:"tls"`
-	Sni      string `json:"sni"`
-
-	DelayMs float64 `json:"-" gorm:"-"`
-}
-
-func (Node) TableName() string {
-	return "pixiv_proxy_nodes"
-}
 
 func (m *Manager) DownloadingNode(url string) error {
 	req, _ := http.NewRequest("GET", url, nil)
@@ -61,7 +40,7 @@ func (m *Manager) DownloadingNode(url string) error {
 		return err
 	}
 
-	if err := tx.Delete(&Node{}).Error; err != nil {
+	if err := tx.Delete(&model.Node{}).Error; err != nil {
 		tx.Rollback()
 		return err
 	}
@@ -79,19 +58,19 @@ func (m *Manager) DownloadingNode(url string) error {
 }
 
 // 解析 VMess 节点
-func parseVMess(line string) (Node, error) {
+func parseVMess(line string) (model.Node, error) {
 	b64 := strings.TrimPrefix(line, "vmess://")
 	data, err := base64.StdEncoding.DecodeString(b64)
 	if err != nil {
-		return Node{}, err
+		return model.Node{}, err
 	}
 
 	var vm map[string]string
 	if err := json.Unmarshal(data, &vm); err != nil {
-		return Node{}, err
+		return model.Node{}, err
 	}
 
-	return Node{
+	return model.Node{
 		Protocol: "vmess",
 		Name:     vm["ps"],
 		Address:  vm["add"],
@@ -106,12 +85,12 @@ func parseVMess(line string) (Node, error) {
 }
 
 // 解析 VLESS 节点
-func parseVLESS(line string) (Node, error) {
+func parseVLESS(line string) (model.Node, error) {
 	raw := strings.TrimPrefix(line, "vless://")
 
 	u, err := url.Parse(raw)
 	if err != nil {
-		return Node{}, err
+		return model.Node{}, err
 	}
 
 	id := u.User.Username()
@@ -120,7 +99,7 @@ func parseVLESS(line string) (Node, error) {
 	name := u.Fragment
 
 	query := u.Query()
-	return Node{
+	return model.Node{
 		Protocol: "vless",
 		Name:     name,
 		Address:  address,
@@ -134,7 +113,7 @@ func parseVLESS(line string) (Node, error) {
 	}, nil
 }
 
-func testNode(node Node, timeout time.Duration) (float64, error) {
+func testNode(node model.Node, timeout time.Duration) (float64, error) {
 	addr := net.JoinHostPort(node.Address, node.Port)
 	start := time.Now()
 

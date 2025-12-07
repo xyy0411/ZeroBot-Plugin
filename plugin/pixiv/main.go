@@ -356,6 +356,6 @@ func init() {
 
 		service.SendIllusts(ctx, illusts, gid)
 
-		service.BackgroundCacheFiller(cleanKeyword, 15, r18Req, 5, ctx.Event.GroupID)
+		service.BackgroundCacheFiller(cleanKeyword, 10, r18Req, 5, ctx.Event.GroupID)
 	})
 }

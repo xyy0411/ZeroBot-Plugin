@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
 	log "github.com/sirupsen/logrus"
 	"os"
 	"os/exec"
@@ -27,16 +28,12 @@ type Manager struct {
 }
 
 func NewManager(db *cache.DB) *Manager {
-	if err := db.AutoMigrate(&Node{}).Error; err != nil {
-		panic(err)
-	}
-
 	return &Manager{db: db}
 }
 
 // ListNodes 按插入顺序返回节点列表
-func (m *Manager) ListNodes() ([]Node, error) {
-	var nodes []Node
+func (m *Manager) ListNodes() ([]model.Node, error) {
+	var nodes []model.Node
 	if err := m.db.Order("record_id").Find(&nodes).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.New("代理节点列表为空")
@@ -83,13 +80,13 @@ func (m *Manager) AutoSwitch() (string, error) {
 	log.Printf("开始检测 %d 个节点...\n", len(nodes))
 
 	timeout := 4 * time.Second
-	results := make(chan Node, len(nodes))
+	results := make(chan model.Node, len(nodes))
 	var wg sync.WaitGroup
 
 	var msg strings.Builder
 	for _, n := range nodes {
 		wg.Add(1)
-		go func(nd Node) {
+		go func(nd model.Node) {
 			defer wg.Done()
 			delay, err := testNode(nd, timeout)
 			if err != nil {
@@ -111,7 +108,7 @@ func (m *Manager) AutoSwitch() (string, error) {
 	}()
 
 	// pick best (smallest delay)
-	var best Node
+	var best model.Node
 	best.DelayMs = 1e9
 	for r := range results {
 		if r.DelayMs < best.DelayMs {
@@ -133,7 +130,7 @@ func (m *Manager) AutoSwitch() (string, error) {
 	return msg.String(), nil
 }
 
-func (m *Manager) writeConfigAndRestart(node Node) error {
+func (m *Manager) writeConfigAndRestart(node model.Node) error {
 	portNum := node.Port
 	if _, err := strconv.Atoi(portNum); err != nil {
 		portNum = "80"
@@ -194,8 +191,8 @@ func (m *Manager) writeConfigAndRestart(node Node) error {
 }
 
 // parseSubscription 解析订阅内容
-func parseSubscription(raw string) ([]Node, error) {
-	var nodes []Node
+func parseSubscription(raw string) ([]model.Node, error) {
+	var nodes []model.Node
 
 	// 第一次 Base64 解码
 	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(raw))
