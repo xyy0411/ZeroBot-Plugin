@@ -5,10 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
-	log "github.com/sirupsen/logrus"
 	"io"
 	"net/http"
-	"net/url"
 	"time"
 )
 
@@ -27,46 +25,16 @@ type Client struct {
 	*http.Client
 }
 
-func NewClient(proxyUrl string) *Client {
-	proxyURL, err := url.Parse(proxyUrl)
-	if err != nil {
-		log.Warning("连接代理错误:", err)
-		proxyURL = nil
-	}
-
-	var noProxyDomains = []string{
-		// 源自https://blog.yuki.sh/posts/599ec3ed8eda/
-		"i.yuki.sh",
-		// 源自https://i.muxmus.com/
-		"i.muxmus.com",
-	}
-
+func NewClient() *Client {
 	return &Client{
 		&http.Client{
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{MaxVersion: tls.VersionTLS13},
-				Proxy: func(req *http.Request) (*url.URL, error) {
-					host := req.URL.Hostname()
-
-					for _, d := range noProxyDomains {
-						if host == d {
-							return nil, nil
-						}
-					}
-
-					// 其它全部走代理
-					return proxyURL, nil
-				},
 			},
 			Timeout: time.Minute,
 		},
 	}
 }
-
-const (
-	yuki   = "i.yuki.sh"
-	muxmus = "i.muxmus.com"
-)
 
 func (c *Client) SearchPixivIllustrations(accessToken, url string) (*model.RootEntity, error) {
 	req, _ := http.NewRequest("GET", url, nil)
@@ -124,61 +92,30 @@ func (c *Client) fetchOnce(targetURL, referer string) ([]byte, int, error) {
 	return data, resp.StatusCode, nil
 }
 
-// FetchPixivImage 优先直连 P 站下载，失败后依次使用反代重试
-func (c *Client) FetchPixivImage(illust model.IllustCache, url string) ([]byte, bool, error) {
+// FetchPixivImage 直接从 Pixiv 下载图片
+func (c *Client) FetchPixivImage(illust model.IllustCache, url string) ([]byte, error) {
 	fmt.Println("下载", illust.PID)
 
 	if c == nil {
 		fmt.Println("FetchPixivImage called on nil IllustCache")
-		return nil, false, nil
+		return nil, nil
 	}
 
-	// 1. 直连 Pixiv
 	data, status, err := c.fetchOnce(url, "https://www.pixiv.net/")
 	if err == nil && status == http.StatusOK {
-		return data, false, nil
+		return data, nil
 	}
 	if status == http.StatusNotFound {
-		return nil, false, &HTTPStatusError{StatusCode: status, URL: url}
+		return nil, &HTTPStatusError{StatusCode: status, URL: url}
 	}
 
-	fmt.Println("下载失败:", illust.PID, "准备使用反向代理")
-	// 2. 反代兜底
-	fallbackHosts := []string{yuki, muxmus}
-	var lastStatus int
-	var lastErr error
-
-	for _, host := range fallbackHosts {
-		replacedURL, err := replaceDomain(url, host)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-
-		data, status, err = c.fetchOnce(replacedURL, "https://"+host)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-
-		if status == http.StatusOK {
-			return data, true, nil
-		}
-
-		if status == http.StatusNotFound {
-			return nil, true, &HTTPStatusError{StatusCode: status, URL: replacedURL}
-		}
-
-		lastStatus = status
+	if err != nil {
+		return nil, err
 	}
 
-	if lastErr != nil {
-		return nil, true, lastErr
+	if status != 0 {
+		return nil, &HTTPStatusError{StatusCode: status, URL: url}
 	}
 
-	if lastStatus != 0 {
-		return nil, true, &HTTPStatusError{StatusCode: lastStatus, URL: url}
-	}
-
-	return nil, true, fmt.Errorf("下载图片失败")
+	return nil, fmt.Errorf("下载图片失败")
 }

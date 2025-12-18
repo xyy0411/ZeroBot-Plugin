@@ -11,8 +11,8 @@ type PixivAPI struct {
 	Token  *TokenStore
 }
 
-func NewPixivAPI(refreshToken string, proxy string) *PixivAPI {
-	c := NewClient(proxy)
+func NewPixivAPI(refreshToken string) *PixivAPI {
+	c := NewClient()
 	return &PixivAPI{
 		Client: c,
 		Token:  NewTokenStore(refreshToken, c),
