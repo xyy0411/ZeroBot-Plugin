@@ -6,21 +6,18 @@ import (
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/api"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/cache"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
-	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/proxy"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
 	"net/http"
 	"sync"
-	"sync/atomic"
 )
 
 var cacheFilling sync.Map
 
 // Service 用于封装整个 Pixiv 模块的依赖与接口
 type Service struct {
-	DB    *cache.DB
-	API   *api.PixivAPI
-	Proxy *proxy.Manager
+	DB  *cache.DB
+	API *api.PixivAPI
 	// 内部任务锁：限制每个人同一时间只能执行一个请求
 	taskMu sync.Mutex
 	tasks  map[int64]*taskState
@@ -28,19 +25,16 @@ type Service struct {
 	// 并发控制
 	DownloadWorkers int
 	SendWorkers     int
-
-	autoSwitching int32
 }
 
 type taskState struct {
 	Running bool
 }
 
-func NewService(db *cache.DB, api *api.PixivAPI, proxy *proxy.Manager) *Service {
+func NewService(db *cache.DB, api *api.PixivAPI) *Service {
 	return &Service{
 		DB:              db,
 		API:             api,
-		Proxy:           proxy,
 		tasks:           make(map[int64]*taskState),
 		DownloadWorkers: 4,
 		SendWorkers:     2,
@@ -74,32 +68,12 @@ func (s *Service) Release(userID int64) {
 	delete(s.tasks, userID)
 }
 
-func (s *Service) triggerAutoSwitch() {
-	if s.Proxy == nil {
-		return
-	}
-
-	if !atomic.CompareAndSwapInt32(&s.autoSwitching, 0, 1) {
-		return
-	}
-
-	go func() {
-		defer atomic.StoreInt32(&s.autoSwitching, 0)
-		if msg, err := s.Proxy.AutoSwitch(); err != nil {
-			fmt.Println("自动切换代理节点失败:", err)
-		} else {
-			fmt.Println("自动切换代理节点完成:\n" + msg)
-		}
-	}()
-}
-
 func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 	downloadSem := make(chan struct{}, s.DownloadWorkers)
 	type DLResult struct {
-		Ill      model.IllustCache
-		Img      []byte
-		Err      error
-		Fallback bool
+		Ill model.IllustCache
+		Img []byte
+		Err error
 	}
 
 	gid := ctx.Event.GroupID
@@ -117,9 +91,9 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 		go func() {
 			defer func() { <-downloadSem }()
 
-			img, usedFallback, err := s.API.Client.FetchPixivImage(ill1, ill1.OriginalURL)
+			img, err := s.API.Client.FetchPixivImage(ill1, ill1.OriginalURL)
 			fmt.Println("下载图片完成：", ill1.PID)
-			results <- DLResult{Ill: ill1, Img: img, Err: err, Fallback: usedFallback}
+			results <- DLResult{Ill: ill1, Img: img, Err: err}
 		}()
 	}
 
@@ -139,15 +113,7 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 				ctx.SendChain(message.Text("下载失败: ", res.Err))
 			}
 
-			if res.Fallback {
-				s.triggerAutoSwitch()
-			}
-
 			continue
-		}
-
-		if res.Fallback {
-			s.triggerAutoSwitch()
 		}
 
 		// 发送消息（顺序执行，不开 goroutine）

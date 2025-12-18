@@ -5,28 +5,6 @@ import (
 	"gorm.io/datatypes"
 )
 
-// Node 通用节点结构
-type Node struct {
-	RecordID uint `gorm:"primary_key" json:"-"`
-
-	Protocol string `json:"protocol"`
-	Name     string `json:"name"`
-	Address  string `json:"address"`
-	Port     string `json:"port"`
-	ID       string `json:"id" gorm:"column:node_id"`
-	Network  string `json:"network"`
-	Host     string `json:"host"`
-	Path     string `json:"path"`
-	TLS      string `json:"tls"`
-	Sni      string `json:"sni"`
-
-	DelayMs float64 `json:"-" gorm:"-"`
-}
-
-func (Node) TableName() string {
-	return "pixiv_proxy_nodes"
-}
-
 // IllustCache 插画缓存表
 type IllustCache struct {
 	gorm.Model

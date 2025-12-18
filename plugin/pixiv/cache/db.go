@@ -18,7 +18,7 @@ func NewDB(path string) *DB {
 	if err != nil {
 		panic(err)
 	}
-	if err = db.AutoMigrate(&model.IllustCache{}, &model.SentImage{}, &model.RefreshToken{}, &model.Node{}).Error; err != nil {
+	if err = db.AutoMigrate(&model.IllustCache{}, &model.SentImage{}, &model.RefreshToken{}).Error; err != nil {
 		panic(err)
 	}
 	sqlDB := db.DB()
