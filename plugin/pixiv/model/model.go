@@ -20,7 +20,7 @@ type IllustCache struct {
 	Bookmarks   int64          // 收藏数
 	TotalView   int64          // 总浏览数
 	CreateDate  string         // 创建日期
-	PageCount   int64          // 页数
+	PageCount   int64          `gorm:"default:1"` // 页数
 	Tags        datatypes.JSON `gorm:"type:json"` // 插画的所有标签 方便后续查找
 }
 
@@ -49,34 +49,29 @@ type RootEntity struct {
 }
 
 type IllustsEntity struct {
-	Id                          int64                `json:"id"`
-	Title                       string               `json:"title"`
-	Type                        string               `json:"type"`
-	ImageUrls                   ImageUrlsEntity      `json:"image_urls"`
-	Caption                     string               `json:"caption"`
-	Restrict                    int64                `json:"restrict"`
-	User                        UserEntity           `json:"user"`
-	Tags                        []TagsEntity         `json:"tags"`
-	Tools                       []interface{}        `json:"tools"`
-	CreateDate                  string               `json:"create_date"`
-	PageCount                   int64                `json:"page_count"`
-	Width                       int64                `json:"width"`
-	Height                      int64                `json:"height"`
-	SanityLevel                 int64                `json:"sanity_level"`
-	XRestrict                   int64                `json:"x_restrict"`
-	Series                      interface{}          `json:"series"`
-	MetaSinglePage              MetaSinglePageEntity `json:"meta_single_page"`
-	MetaPages                   []MetaPage           `json:"meta_pages"`
-	TotalView                   int64                `json:"total_view"`
-	TotalBookmarks              int64                `json:"total_bookmarks"`
-	IsBookmarked                bool                 `json:"is_bookmarked"`
-	Visible                     bool                 `json:"visible"`
-	IsMuted                     bool                 `json:"is_muted"`
-	SeasonalEffectAnimationUrls interface{}          `json:"seasonal_effect_animation_urls"`
-	EventBanners                interface{}          `json:"event_banners"`
-	IllustAiType                int64                `json:"illust_ai_type"`
-	IllustBookStyle             int64                `json:"illust_book_style"`
-	Request                     interface{}          `json:"request"`
+	Id              int64                `json:"id"`
+	Title           string               `json:"title"`
+	Type            string               `json:"type"`
+	ImageUrls       ImageUrlsEntity      `json:"image_urls"`
+	Caption         string               `json:"caption"`
+	Restrict        int64                `json:"restrict"`
+	User            UserEntity           `json:"user"`
+	Tags            []TagsEntity         `json:"tags"`
+	CreateDate      string               `json:"create_date"`
+	PageCount       int64                `json:"page_count"`
+	Width           int64                `json:"width"`
+	Height          int64                `json:"height"`
+	SanityLevel     int64                `json:"sanity_level"`
+	XRestrict       int64                `json:"x_restrict"`
+	MetaSinglePage  MetaSinglePageEntity `json:"meta_single_page"`
+	MetaPages       []MetaPage           `json:"meta_pages"`
+	TotalView       int64                `json:"total_view"`
+	TotalBookmarks  int64                `json:"total_bookmarks"`
+	IsBookmarked    bool                 `json:"is_bookmarked"`
+	Visible         bool                 `json:"visible"`
+	IsMuted         bool                 `json:"is_muted"`
+	IllustAiType    int64                `json:"illust_ai_type"`
+	IllustBookStyle int64                `json:"illust_book_style"`
 }
 
 type MetaPage struct {

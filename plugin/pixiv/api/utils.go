@@ -87,6 +87,40 @@ func IsR18(s string) bool {
 	return false
 }
 
+func ModifyPageGeneric(originalURL string, pageNum int) string {
+	u, err := url.Parse(originalURL)
+	if err != nil {
+		return originalURL
+	}
+
+	// 获取路径的最后一部分（文件名）
+	pathParts := strings.Split(u.Path, "/")
+	if len(pathParts) == 0 {
+		return originalURL
+	}
+
+	fileName := pathParts[len(pathParts)-1]
+	parts := strings.Split(fileName, "_")
+	if len(parts) < 2 {
+		return originalURL
+	}
+
+	// 分离页码和扩展名
+	pageAndExt := strings.Split(parts[1], ".")
+	if len(pageAndExt) < 2 {
+		return originalURL
+	}
+
+	// 修改页码部分，保留扩展名
+	parts[1] = fmt.Sprintf("p%d.%s", pageNum, pageAndExt[1])
+
+	// 更新文件名
+	pathParts[len(pathParts)-1] = strings.Join(parts, "_")
+	u.Path = strings.Join(pathParts, "/")
+
+	return u.String()
+}
+
 func convertToIllustCache(raw model.IllustsEntity) (*model.IllustCache, error) {
 	var tagNames []string
 	for _, tag := range raw.Tags {

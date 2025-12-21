@@ -9,7 +9,6 @@ import (
 	"github.com/FloatTech/floatbox/file"
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
-	"github.com/FloatTech/zbputils/ctxext"
 	log "github.com/sirupsen/logrus"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
@@ -17,8 +16,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
-	"time"
 )
 
 var defaultKeyword = []string{"萝莉", "御姐", "妹妹", "姐姐"}

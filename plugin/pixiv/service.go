@@ -72,7 +72,7 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 	downloadSem := make(chan struct{}, s.DownloadWorkers)
 	type DLResult struct {
 		Ill model.IllustCache
-		Img []byte
+		Img [][]byte
 		Err error
 	}
 
@@ -91,10 +91,69 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 		go func() {
 			defer func() { <-downloadSem }()
 
-			img, err := s.API.Client.FetchPixivImage(ill1, ill1.OriginalURL)
+			d := DLResult{
+				Ill: ill1,
+			}
+
+			if ill1.PageCount > 1 && len(illusts) == 1 {
+
+				type pageResult struct {
+					index int
+					img   []byte
+					err   error
+				}
+
+				pageCh := make(chan pageResult, ill1.PageCount)
+				var wg sync.WaitGroup
+
+				pageSem := make(chan struct{}, s.DownloadWorkers)
+
+				for i := 0; int64(i) < ill1.PageCount; i++ {
+					wg.Add(1)
+					pageSem <- struct{}{}
+
+					go func(page int) {
+						defer wg.Done()
+						defer func() { <-pageSem }()
+
+						u := api.ModifyPageGeneric(ill1.OriginalURL, page)
+						img, err := s.API.Client.FetchPixivImage(ill1, u)
+
+						pageCh <- pageResult{
+							index: page,
+							img:   img,
+							err:   err,
+						}
+					}(i)
+				}
+
+				// 关闭 channel
+				go func() {
+					wg.Wait()
+					close(pageCh)
+				}()
+
+				// 预分配，保证顺序
+				d.Img = make([][]byte, ill1.PageCount)
+
+				for r := range pageCh {
+					if r.err != nil && d.Err == nil {
+						d.Err = r.err
+					}
+					d.Img[r.index] = r.img
+				}
+
+			} else {
+				// ===== 单页图 =====
+				img, err := s.API.Client.FetchPixivImage(ill1, ill1.OriginalURL)
+				d.Img = append(d.Img, img)
+				d.Err = err
+			}
+
 			fmt.Println("下载图片完成：", ill1.PID)
-			results <- DLResult{Ill: ill1, Img: img, Err: err}
+			results <- d
 		}()
+
 	}
 
 	// 接收并发送（顺序）
@@ -116,21 +175,22 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 			continue
 		}
 
-		// 发送消息（顺序执行，不开 goroutine）
-		ctx.SendChain(
-			message.Text(
-				"PID:", res.Ill.PID,
-				"\n标题:", res.Ill.Title,
-				"\n画师:", res.Ill.AuthorName,
-				"\ntag:", res.Ill.Tags,
-				"\n收藏数:", res.Ill.Bookmarks,
-				"\n浏览数:", res.Ill.TotalView,
-				"\n发布时间:", res.Ill.CreateDate,
-			),
-			message.ImageBytes(res.Img),
-		)
+		var msg message.Message
+		msg = append(msg, message.Text(
+			"PID:", res.Ill.PID,
+			"\n标题:", res.Ill.Title,
+			"\n画师:", res.Ill.AuthorName,
+			"\ntag:", res.Ill.Tags,
+			"\n收藏数:", res.Ill.Bookmarks,
+			"\n浏览数:", res.Ill.TotalView,
+			"\n发布时间:", res.Ill.CreateDate,
+		))
+		for i := 0; i < len(res.Img); i++ {
+			msg = append(msg, message.ImageBytes(res.Img[i]))
+		}
 
-		// 清空图片数据
+		ctx.Send(msg)
+
 		res.Img = nil
 
 		s.DB.Create(&model.SentImage{
