@@ -1,7 +1,6 @@
 package pixiv
 
 import (
-	"errors"
 	"fmt"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/api"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/cache"
@@ -13,7 +12,6 @@ import (
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
 	"math/rand"
-	"net/http"
 	"os"
 	"strconv"
 )
@@ -82,35 +80,9 @@ func init() {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
 		}
-		img, err1 := service.API.Client.FetchPixivImage(*illust, illust.OriginalURL)
-		if err1 != nil {
-			var httpErr *api.HTTPStatusError
-			if errors.As(err1, &httpErr) && httpErr.StatusCode == http.StatusNotFound {
-				_ = service.DB.DeleteIllustByPID(illust.PID)
-			}
-			ctx.SendChain(message.Text("ERROR: ", err1))
-			return
-		}
 		// tags的类型是json格式所以就不设置keyword了
 		_ = service.DB.Create(illust)
-		fmt.Println("获取", illust.PID, "成功，准备发送！", float64(len(img))/1024/1024, "mb")
-		ctx.SendChain(message.Text(
-			"PID:", illust.PID,
-			"\n标题:", illust.Title,
-			"\n画师:", illust.AuthorName,
-			"\ntag:", illust.Tags,
-			"\n收藏数:", illust.Bookmarks,
-			"\n预览数:", illust.TotalView,
-			"\n发布时间:", illust.CreateDate,
-		), message.ImageBytes(img))
-		gid := ctx.Event.GroupID
-		if gid == 0 {
-			gid = -ctx.Event.UserID
-		}
-		service.DB.Create(&model.SentImage{
-			GroupID: gid,
-			PID:     illust.PID,
-		})
+		service.SendIllusts(ctx, []model.IllustCache{*illust})
 	})
 
 	engine.OnRegex(`^(\d+)?张?画师(\d+)`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
@@ -165,25 +137,7 @@ func init() {
 			ctx.SendChain(message.Text("发送涩图失败惹"))
 			return
 		}
-		illust := illusts[0]
-		img, err := service.API.Client.FetchPixivImage(illust, illust.OriginalURL)
-		if err != nil {
-			var httpErr *api.HTTPStatusError
-			if errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusNotFound {
-				_ = service.DB.DeleteIllustByPID(illust.PID)
-			}
-			ctx.SendChain(message.Text("发送涩图失败惹"))
-			return
-		}
-		ctx.SendChain(message.Text(
-			"PID:", illust.PID,
-			"\n标题:", illust.Title,
-			"\n画师:", illust.AuthorName,
-			"\ntag:", illust.Tags,
-			"\n收藏数:", illust.Bookmarks,
-			"\n预览数:", illust.TotalView,
-			"\n发布时间:", illust.CreateDate,
-		), message.ImageBytes(img))
+		service.SendIllusts(ctx, []model.IllustCache{illusts[0]})
 	})
 
 	engine.OnRegex(`^(\d+)?张?[色|瑟|涩]图\s*(.+)?`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
