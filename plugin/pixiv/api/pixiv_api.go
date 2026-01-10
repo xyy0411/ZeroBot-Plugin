@@ -167,6 +167,15 @@ func (p *PixivAPI) fetchPixivCommon(
 			}
 			seen[raw.Id] = struct{}{}
 
+			tagNames := make([]string, 0, len(raw.Tags))
+			for _, tag := range raw.Tags {
+				tagNames = append(tagNames, tag.Name)
+			}
+
+			if isR18Req != nil && *isR18Req && !hasR18Tag(tagNames) {
+				continue
+			}
+
 			// 转换
 			ill, err := convertToIllustCache(raw)
 			if err != nil {
