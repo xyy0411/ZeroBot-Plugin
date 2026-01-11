@@ -6,9 +6,14 @@ import (
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/api"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/cache"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
+	"github.com/FloatTech/floatbox/file"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
 	"net/http"
+	"net/url"
+	"os"
+	"path"
+	"path/filepath"
 	"sync"
 )
 
@@ -71,9 +76,9 @@ func (s *Service) Release(userID int64) {
 func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 	downloadSem := make(chan struct{}, s.DownloadWorkers)
 	type DLResult struct {
-		Ill model.IllustCache
-		Img [][]byte
-		Err error
+		Ill      model.IllustCache
+		ImgPaths []string
+		Err      error
 	}
 
 	gid := ctx.Event.GroupID
@@ -99,7 +104,7 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 
 				type pageResult struct {
 					index int
-					img   []byte
+					path  string
 					err   error
 				}
 
@@ -118,10 +123,25 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 
 						u := api.ModifyPageGeneric(ill1.OriginalURL, page)
 						img, err := s.API.Client.FetchPixivImage(ill1, u)
+						if err != nil {
+							pageCh <- pageResult{
+								index: page,
+								err:   err,
+							}
+							return
+						}
+						imagePath := buildPixivImagePath(ill1.PID, page+1, u)
+						if writeErr := os.WriteFile(imagePath, img, 0644); writeErr != nil {
+							pageCh <- pageResult{
+								index: page,
+								err:   writeErr,
+							}
+							return
+						}
 
 						pageCh <- pageResult{
 							index: page,
-							img:   img,
+							path:  imagePath,
 							err:   err,
 						}
 					}(i)
@@ -134,20 +154,28 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 				}()
 
 				// 预分配，保证顺序
-				d.Img = make([][]byte, ill1.PageCount)
+				d.ImgPaths = make([]string, ill1.PageCount)
 
 				for r := range pageCh {
 					if r.err != nil && d.Err == nil {
 						d.Err = r.err
 					}
-					d.Img[r.index] = r.img
+					d.ImgPaths[r.index] = r.path
 				}
 
 			} else {
 				// ===== 单页图 =====
 				img, err := s.API.Client.FetchPixivImage(ill1, ill1.OriginalURL)
-				d.Img = append(d.Img, img)
-				d.Err = err
+				if err == nil {
+					imagePath := buildPixivImagePath(ill1.PID, 0, ill1.OriginalURL)
+					if writeErr := os.WriteFile(imagePath, img, 0644); writeErr != nil {
+						d.Err = writeErr
+					} else {
+						d.ImgPaths = append(d.ImgPaths, imagePath)
+					}
+				} else {
+					d.Err = err
+				}
 			}
 
 			fmt.Println("下载图片完成：", ill1.PID)
@@ -161,6 +189,7 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 		res := <-results
 
 		if res.Err != nil {
+			cleanupPixivImages(res.ImgPaths)
 			var httpErr *api.HTTPStatusError
 			if errors.As(res.Err, &httpErr) && httpErr.StatusCode == http.StatusNotFound {
 				if err := s.DB.DeleteIllustByPID(res.Ill.PID); err != nil {
@@ -185,18 +214,50 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 			"\n浏览数:", res.Ill.TotalView,
 			"\n发布时间:", res.Ill.CreateDate,
 		))
-		for i := 0; i < len(res.Img); i++ {
-			msg = append(msg, message.ImageBytes(res.Img[i]))
+		for i := 0; i < len(res.ImgPaths); i++ {
+			if res.ImgPaths[i] == "" {
+				continue
+			}
+			msg = append(msg, message.Image("file:///"+filepath.ToSlash(res.ImgPaths[i])))
 		}
 
 		ctx.Send(msg)
 
-		res.Img = nil
+		cleanupPixivImages(res.ImgPaths)
 
 		s.DB.Create(&model.SentImage{
 			GroupID: gid,
 			PID:     res.Ill.PID,
 		})
+	}
+}
+
+func buildPixivImagePath(pid int64, index int, rawURL string) string {
+	ext := pixivImageExt(rawURL)
+	if index > 0 {
+		return filepath.Join(file.BOTPATH, "data", "pixiv", fmt.Sprintf("%d-%d%s", pid, index, ext))
+	}
+	return filepath.Join(file.BOTPATH, "data", "pixiv", fmt.Sprintf("%d%s", pid, ext))
+}
+
+func pixivImageExt(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ".jpg"
+	}
+	ext := path.Ext(parsed.Path)
+	if ext == "" {
+		return ".jpg"
+	}
+	return ext
+}
+
+func cleanupPixivImages(paths []string) {
+	for _, imagePath := range paths {
+		if imagePath == "" {
+			continue
+		}
+		_ = os.Remove(imagePath)
 	}
 }
 
