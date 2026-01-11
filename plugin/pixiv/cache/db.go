@@ -4,6 +4,7 @@ import (
 	"errors"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
 	"github.com/jinzhu/gorm"
+	"strings"
 	"sync"
 	"time"
 )
@@ -57,9 +58,11 @@ func (db *DB) FindByTag(gid int64, tag string, needed int, r18Req bool) ([]model
 	defer db.mu.Unlock()
 
 	var results []model.IllustCache
+	escapedTag := strings.ReplaceAll(tag, "\"", "\\\"")
+	likePattern := "%\"" + escapedTag + "\"%"
 
 	query := db.Model(&model.IllustCache{}).
-		Where("tags LIKE ?", "%"+tag+"%").
+		Where("tags LIKE ?", likePattern).
 		Where("pid NOT IN (?)", db.Model(&model.SentImage{}).Where("group_id = ?", gid).Select("pid").SubQuery()).
 		Order("bookmarks DESC").
 		Limit(needed)
@@ -116,20 +119,28 @@ func (db *DB) FindIllustsSmart(gid int64, keyword string, limit int, r18Req bool
 
 	// 2. tag 查询补齐
 	need := limit - len(results)
-	tagRes, err := db.FindByTag(gid, keyword, need, r18Req)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, ill := range tagRes {
-		if _, ok := seen[ill.PID]; ok {
-			continue
+	for _, tagKeyword := range strings.Fields(keyword) {
+		tagRes, err := db.FindByTag(gid, tagKeyword, need, r18Req)
+		if err != nil {
+			return nil, err
 		}
-		results = append(results, ill)
-		seen[ill.PID] = struct{}{}
+
+		for _, ill := range tagRes {
+			if _, ok := seen[ill.PID]; ok {
+				continue
+			}
+			results = append(results, ill)
+			seen[ill.PID] = struct{}{}
+			if len(results) >= limit {
+				break
+			}
+		}
+
 		if len(results) >= limit {
 			break
 		}
+
+		need = limit - len(results)
 	}
 
 	return results, nil
