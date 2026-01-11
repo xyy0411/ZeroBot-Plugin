@@ -6,6 +6,7 @@ import (
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/api"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/cache"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
+	"github.com/FloatTech/floatbox/file"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
 	"net/http"
@@ -217,6 +218,7 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 			if res.ImgPaths[i] == "" {
 				continue
 			}
+			msg = append(msg, message.Image("file:///"+filepath.ToSlash(res.ImgPaths[i])))
 			msg = append(msg, message.Image(res.ImgPaths[i]))
 		}
 
@@ -234,6 +236,9 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 func buildPixivImagePath(pid int64, index int, rawURL string) string {
 	ext := pixivImageExt(rawURL)
 	if index > 0 {
+		return filepath.Join(file.BOTPATH, "data", "pixiv", fmt.Sprintf("%d-%d%s", pid, index, ext))
+	}
+	return filepath.Join(file.BOTPATH, "data", "pixiv", fmt.Sprintf("%d%s", pid, ext))
 		return filepath.Join("data/pixiv", fmt.Sprintf("%d-%d%s", pid, index, ext))
 	}
 	return filepath.Join("data/pixiv", fmt.Sprintf("%d%s", pid, ext))
