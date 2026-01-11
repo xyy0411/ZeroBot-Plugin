@@ -239,9 +239,6 @@ func buildPixivImagePath(pid int64, index int, rawURL string) string {
 		return filepath.Join(file.BOTPATH, "data", "pixiv", fmt.Sprintf("%d-%d%s", pid, index, ext))
 	}
 	return filepath.Join(file.BOTPATH, "data", "pixiv", fmt.Sprintf("%d%s", pid, ext))
-		return filepath.Join("data/pixiv", fmt.Sprintf("%d-%d%s", pid, index, ext))
-	}
-	return filepath.Join("data/pixiv", fmt.Sprintf("%d%s", pid, ext))
 }
 
 func pixivImageExt(rawURL string) string {
