@@ -218,7 +218,6 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 				continue
 			}
 			msg = append(msg, message.Image("file:///"+filepath.ToSlash(res.ImgPaths[i])))
-			msg = append(msg, message.Image(res.ImgPaths[i]))
 		}
 
 		ctx.Send(msg)
