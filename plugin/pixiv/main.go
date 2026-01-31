@@ -41,13 +41,34 @@ func init() {
 	service = NewService(db, pixivAPI)
 }
 
+const (
+	help = `
+	- [x张]涩图 [关键词]
+	- 每日涩图
+	- [x张]画师[画师的uid]
+	- p站搜图[插画pid]
+	[]为可忽略项([]不用打出来这只是一个占位符)
+	可添加多个关键词每个关键词用空格隔开
+	默认不发R-18如果要发就加一个R-18关键词
+`
+)
+
 func init() {
 
 	engine := control.AutoRegister(&ctrl.Options[*zero.Ctx]{
 		DisableOnDefault: false,
 		Brief:            "Pixiv 图片搜索",
-		Help:             "- [x张]涩图 [关键词]\n- 每日涩图\n- [x张]画师[画师的uid] \n- p站搜图[插画pid]\n[]为可忽略项\n可添加多个关键词每个关键词用空格隔开\n默认不发R-18如果要发就加一个R-18关键词",
+		Help:             help,
 	})
+
+	engine.OnRegex(`^允许该群使用p站r18$`, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+		if err := service.DB.Create(&model.GroupR18Permission{GroupID: ctx.Event.GroupID}).Error; err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+		ctx.SendChain(message.Text("已允许该群使用p站r18"))
+	})
+
 	engine.OnRegex(`^设置p站token (.*)`, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		token := ctx.State["regex_matched"].([]string)[1]
 		var refreshToken model.RefreshToken
@@ -169,15 +190,22 @@ func init() {
 			return
 		}
 
+		gid := ctx.Event.GroupID
 		r18Req := api.IsR18(keyword)
 		cleanKeyword := api.RemoveR18Keywords(keyword)
 
-		gid := ctx.Event.GroupID
+		if r18Req && !service.DB.CheckGroupR18Permission(gid) {
+			ctx.SendChain(message.Text([]string{
+				"笨蛋笨蛋大笨蛋",
+				"这里不太好吧，去私聊看看吧!",
+			}[rand.Intn(2)]))
+			return
+		}
+
 		if gid == 0 {
 			gid = -ctx.Event.UserID
 		}
 
-		// 数据库中的 keyword 在缓存时已经去除了 R-18 关键词，因此查询时使用去除后的关键词
 		cachedIllusts, err := service.DB.FindIllustsSmart(gid, cleanKeyword, limitInt, r18Req)
 		if err != nil {
 			ctx.SendChain(message.Text("ERROR: ", err))

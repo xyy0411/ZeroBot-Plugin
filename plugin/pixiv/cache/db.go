@@ -19,7 +19,7 @@ func NewDB(path string) *DB {
 	if err != nil {
 		panic(err)
 	}
-	if err = db.AutoMigrate(&model.IllustCache{}, &model.SentImage{}, &model.RefreshToken{}).Error; err != nil {
+	if err = db.AutoMigrate(&model.IllustCache{}, &model.SentImage{}, &model.RefreshToken{}, &model.GroupR18Permission{}).Error; err != nil {
 		panic(err)
 	}
 	sqlDB := db.DB()
@@ -28,6 +28,15 @@ func NewDB(path string) *DB {
 	sqlDB.SetConnMaxLifetime(time.Hour)
 	db.LogMode(false)
 	return &DB{db, sync.Mutex{}}
+}
+
+func (db *DB) CheckGroupR18Permission(gid int64) bool {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	var count int64
+	db.Model(&model.GroupR18Permission{}).Where("group_id = ?", gid).Count(&count)
+	return count > 0
 }
 
 func (db *DB) FindByKeyword(gid int64, keyword string, limit int, r18Req bool) ([]model.IllustCache, error) {

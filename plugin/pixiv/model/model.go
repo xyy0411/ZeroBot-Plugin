@@ -32,6 +32,12 @@ type SentImage struct {
 	PID     int64 `gorm:"index:idx_group_pid;not null;column:pid"` // 插画 PID
 }
 
+// GroupR18Permission 群组R18权限表
+type GroupR18Permission struct {
+	gorm.Model
+	GroupID int64 `gorm:"unique_index"`
+}
+
 type RefreshToken struct {
 	gorm.Model
 

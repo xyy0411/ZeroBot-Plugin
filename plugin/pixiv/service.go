@@ -164,7 +164,6 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 				}
 
 			} else {
-				// ===== 单页图 =====
 				img, err := s.API.Client.FetchPixivImage(ill1, ill1.OriginalURL)
 				if err == nil {
 					imagePath := buildPixivImagePath(ill1.PID, 0, ill1.OriginalURL)
@@ -184,7 +183,7 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 
 	}
 
-	// 接收并发送（顺序）
+	// 发送（顺序）
 	for range illusts {
 		res := <-results
 
