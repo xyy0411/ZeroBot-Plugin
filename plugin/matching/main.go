@@ -1,6 +1,7 @@
 package matching
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	ctrl "github.com/FloatTech/zbpctrl"
@@ -45,7 +46,17 @@ var (
 	forwardSessionMu sync.RWMutex
 	forwardSessions  = map[int64]forwardSession{}
 	qqRegexp         = regexp.MustCompile(`\d{5,}`)
+	matchIDRegexps   = []*regexp.Regexp{
+		regexp.MustCompile(`(?:与|和|对方|用户|玩家|QQ|qq)[^\d]{0,8}(\d{5,})`),
+		regexp.MustCompile(`(\d{5,})[^\d]{0,8}(?:匹配成功|匹配到|匹配对象)`),
+	}
 )
+
+type matchWSPayload struct {
+	Type    string `json:"type"`
+	Message string `json:"message"`
+	PeerID  int64  `json:"peer_id"`
+}
 
 type forwardSession struct {
 	PeerID    int64
@@ -506,16 +517,21 @@ func processMatching(ctx *zero.Ctx, user User) {
 			ctx.SendChain(message.Text("ERROR:", err))
 			return
 		}
-		processMatchSuccessNotice(ctx, user.UserID, string(msg))
-		ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text(string(msg)))
+
+		rawMsg := string(msg)
+		displayMsg, matchedUserID, isMatchSuccess := parseMatchWSMessage(msg)
+		processMatchSuccessNotice(ctx, user.UserID, rawMsg, matchedUserID, isMatchSuccess)
+		ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text(displayMsg))
 	}
 }
 
-func processMatchSuccessNotice(ctx *zero.Ctx, userID int64, wsMsg string) {
-	if !strings.Contains(wsMsg, "匹配成功") {
+func processMatchSuccessNotice(ctx *zero.Ctx, userID int64, wsMsg string, matchedUserID int64, isMatchSuccess bool) {
+	if !isMatchSuccess && !strings.Contains(wsMsg, "匹配成功") {
 		return
 	}
-	matchedUserID := parseMatchedIDFromText(userID, wsMsg)
+	if matchedUserID == 0 {
+		matchedUserID = parseMatchedIDFromText(ctx, userID, wsMsg)
+	}
 	if matchedUserID == 0 {
 		return
 	}
@@ -527,6 +543,81 @@ func processMatchSuccessNotice(ctx *zero.Ctx, userID int64, wsMsg string) {
 	registerForwardSession(userID, matchedUserID, defaultForwardDuration)
 	notice := message.Text("匹配成功，已开启15分钟转发聊天。你发送给机器人的私聊消息将全部转发给匹配成功的用户；可发送“关闭转发聊天”主动结束。如想知道我的所有功能可发送 `/用法matching`")
 	ctx.SendPrivateMessage(userID, notice)
+}
+
+func parseMatchWSMessage(raw []byte) (displayMsg string, matchedUserID int64, isMatchSuccess bool) {
+	rawText := string(raw)
+	displayMsg = rawText
+
+	var payload matchWSPayload
+	if err := json.Unmarshal(raw, &payload); err == nil {
+		if payload.Message != "" {
+			displayMsg = payload.Message
+		}
+		if payload.PeerID != 0 {
+			matchedUserID = payload.PeerID
+		}
+		if payload.Type == "match_success" || payload.Type == "matched" {
+			isMatchSuccess = true
+		}
+		if !isMatchSuccess && strings.Contains(displayMsg, "匹配成功") {
+			isMatchSuccess = true
+		}
+		if isMatchSuccess {
+			return displayMsg, matchedUserID, true
+		}
+	}
+
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return displayMsg, 0, strings.Contains(rawText, "匹配成功")
+	}
+
+	readString := func(key string) string {
+		v, ok := obj[key]
+		if !ok {
+			return ""
+		}
+		var val string
+		if err := json.Unmarshal(v, &val); err != nil {
+			return ""
+		}
+		return val
+	}
+	readInt64 := func(key string) int64 {
+		v, ok := obj[key]
+		if !ok {
+			return 0
+		}
+		var val int64
+		if err := json.Unmarshal(v, &val); err == nil {
+			return val
+		}
+		var strVal string
+		if err := json.Unmarshal(v, &strVal); err == nil {
+			if id, convErr := strconv.ParseInt(strVal, 10, 64); convErr == nil {
+				return id
+			}
+		}
+		return 0
+	}
+
+	if msg := readString("message"); msg != "" {
+		displayMsg = msg
+	}
+	if tp := readString("type"); tp == "match_success" || tp == "matched" {
+		isMatchSuccess = true
+	}
+	for _, key := range []string{"peer_id", "matched_user_id", "matched_id", "target_id", "peerId", "matchedUserID"} {
+		if id := readInt64(key); id != 0 {
+			matchedUserID = id
+			break
+		}
+	}
+	if !isMatchSuccess && strings.Contains(displayMsg, "匹配成功") {
+		isMatchSuccess = true
+	}
+	return displayMsg, matchedUserID, isMatchSuccess
 }
 
 func isBotFriend(ctx *zero.Ctx, uid, matchedID int64) bool {
@@ -579,13 +670,47 @@ func unregisterForwardSession(uid int64) (int64, bool) {
 	return session.PeerID, true
 }
 
-func parseMatchedIDFromText(uid int64, text string) int64 {
-	matches := qqRegexp.FindAllString(text, -1)
-	for _, m := range matches {
-		id, err := strconv.ParseInt(m, 10, 64)
-		if err == nil && id != uid {
+func parseMatchedIDFromText(ctx *zero.Ctx, uid int64, text string) int64 {
+	friendSet := make(map[int64]struct{})
+	for _, friend := range ctx.GetFriendList().Array() {
+		friendSet[friend.Get("user_id").Int()] = struct{}{}
+	}
+
+	parseID := func(raw string) (int64, bool) {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || id == uid {
+			return 0, false
+		}
+		return id, true
+	}
+
+	for _, reg := range matchIDRegexps {
+		matched := reg.FindStringSubmatch(text)
+		if len(matched) < 2 {
+			continue
+		}
+		id, ok := parseID(matched[1])
+		if !ok {
+			continue
+		}
+		if _, isFriend := friendSet[id]; isFriend {
 			return id
 		}
 	}
-	return 0
+
+	var fallback int64
+	matches := qqRegexp.FindAllString(text, -1)
+	for _, m := range matches {
+		id, ok := parseID(m)
+		if !ok {
+			continue
+		}
+		if _, isFriend := friendSet[id]; isFriend {
+			return id
+		}
+		if fallback == 0 {
+			fallback = id
+		}
+	}
+	return fallback
 }
