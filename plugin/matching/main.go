@@ -12,8 +12,10 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -38,6 +40,17 @@ func readHelpInfo() string {
 }
 
 var regexpstring = `^(有无|有人|谁来)(联机|匹配|打架|对决|玩吗|to|qd|lh|uu|主机|副机|主副皆可|主|副|联机吗)+`
+
+var (
+	forwardSessionMu sync.RWMutex
+	forwardSessions  = map[int64]forwardSession{}
+	qqRegexp         = regexp.MustCompile(`\d{5,}`)
+)
+
+type forwardSession struct {
+	PeerID    int64
+	ExpiresAt time.Time
+}
 
 func init() {
 	engine.OnFullMatch("退出被动匹配黑名单", getDB, zero.OnlyPrivate).SetBlock(true).Handle(func(ctx *zero.Ctx) {
@@ -437,6 +450,19 @@ func init() {
 			user.OnlineSoftware = software
 			processMatching(ctx, user)
 		})
+
+	engine.OnMessage(zero.OnlyToMe).SetBlock(false).Handle(func(ctx *zero.Ctx) {
+		peerID, ok := getForwardPeer(ctx.Event.UserID)
+		if !ok {
+			return
+		}
+		if len(ctx.Event.Message) == 0 {
+			return
+		}
+		forwardMsg := message.Message{message.Text(fmt.Sprintf("来自%s[%d]的转发消息:\n", ctx.CardOrNickName(ctx.Event.UserID), ctx.Event.UserID))}
+		forwardMsg = append(forwardMsg, ctx.Event.Message...)
+		ctx.SendPrivateMessage(peerID, forwardMsg)
+	})
 }
 
 func processMatching(ctx *zero.Ctx, user User) {
@@ -462,6 +488,57 @@ func processMatching(ctx *zero.Ctx, user User) {
 			ctx.SendChain(message.Text("ERROR:", err))
 			return
 		}
+		processMatchSuccessNotice(ctx, user.UserID, string(msg))
 		ctx.SendChain(message.Reply(ctx.Event.MessageID), message.At(ctx.Event.UserID), message.Text(string(msg)))
 	}
+}
+
+func processMatchSuccessNotice(ctx *zero.Ctx, userID int64, wsMsg string) {
+	if !strings.Contains(wsMsg, "匹配成功") {
+		return
+	}
+	matchedUserID := parseMatchedIDFromText(userID, wsMsg)
+	if matchedUserID == 0 {
+		return
+	}
+	registerForwardSession(userID, matchedUserID, 15*time.Minute)
+	notice := message.Text("匹配成功，在后续15分钟你发送给机器人的消息将全部转发给匹配成功的用户。")
+	ctx.SendPrivateMessage(userID, notice)
+	ctx.SendPrivateMessage(matchedUserID, notice)
+}
+
+func registerForwardSession(uid, peerID int64, duration time.Duration) {
+	expiresAt := time.Now().Add(duration)
+	forwardSessionMu.Lock()
+	defer forwardSessionMu.Unlock()
+	forwardSessions[uid] = forwardSession{PeerID: peerID, ExpiresAt: expiresAt}
+	forwardSessions[peerID] = forwardSession{PeerID: uid, ExpiresAt: expiresAt}
+}
+
+func getForwardPeer(uid int64) (int64, bool) {
+	forwardSessionMu.Lock()
+	defer forwardSessionMu.Unlock()
+	session, ok := forwardSessions[uid]
+	if !ok {
+		return 0, false
+	}
+	if time.Now().After(session.ExpiresAt) {
+		delete(forwardSessions, uid)
+		if peerSession, exists := forwardSessions[session.PeerID]; exists && peerSession.PeerID == uid {
+			delete(forwardSessions, session.PeerID)
+		}
+		return 0, false
+	}
+	return session.PeerID, true
+}
+
+func parseMatchedIDFromText(uid int64, text string) int64 {
+	matches := qqRegexp.FindAllString(text, -1)
+	for _, m := range matches {
+		id, err := strconv.ParseInt(m, 10, 64)
+		if err == nil && id != uid {
+			return id
+		}
+	}
+	return 0
 }
