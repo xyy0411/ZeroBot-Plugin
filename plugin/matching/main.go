@@ -492,11 +492,39 @@ func init() {
 		})
 }
 
+func isUserInMatchingQueue(uid int64) (bool, string, error) {
+	resp, err := http.Get("http://127.0.0.1:3000/api/matching/status/" + strconv.FormatInt(uid, 10))
+	if err != nil {
+		return false, "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, "", err
+	}
+	return resp.StatusCode == http.StatusOK, strings.TrimSpace(string(body)), nil
+}
+
 func processMatching(ctx *zero.Ctx, user User) {
 	if _, ok := getForwardPeer(user.UserID); ok {
 		ctx.SendChain(message.Text("你当前正在进行转发聊天，请先发送“关闭转发聊天”后再开始匹配"))
 		return
 	}
+
+	inQueue, queueMsg, err := isUserInMatchingQueue(user.UserID)
+	if err != nil {
+		ctx.SendChain(message.Text("ERROR:", err))
+		return
+	}
+	if inQueue {
+		if queueMsg == "" {
+			queueMsg = "你已经在匹配队列中了，无需重复开始匹配"
+		}
+		ctx.SendChain(message.Text(queueMsg))
+		return
+	}
+
 	var dl websocket.Dialer
 	conn, _, err := dl.Dial(fmt.Sprintf("ws://127.0.0.1:3000/api/matching/%d", user.UserID), nil)
 	if err != nil {
@@ -529,6 +557,9 @@ func processMatching(ctx *zero.Ctx, user User) {
 
 func processMatchSuccessNotice(ctx *zero.Ctx, userID int64, wsMsg string, matchedUserID int64, isMatchSuccess bool) {
 	if !isMatchSuccess && !strings.Contains(wsMsg, "匹配成功") {
+		return
+	}
+	if _, ok := getForwardPeer(userID); ok {
 		return
 	}
 	if matchedUserID == 0 {
