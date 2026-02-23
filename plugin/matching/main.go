@@ -23,7 +23,7 @@ var (
 	helpFilePath = "./plugin/matching/help_info.txt"
 	engine       = control.AutoRegister(&ctrl.Options[*zero.Ctx]{
 		DisableOnDefault:  false,
-		Brief:             "匹配",
+		Brief:             "匹配	",
 		Help:              readHelpInfo(),
 		PrivateDataFolder: "matching",
 	})
@@ -507,7 +507,7 @@ func processMatching(ctx *zero.Ctx, user User) {
 			return
 		}
 		processMatchSuccessNotice(ctx, user.UserID, string(msg))
-		// ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text(string(msg)))
+		ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text(string(msg)))
 	}
 }
 
