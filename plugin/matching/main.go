@@ -530,19 +530,14 @@ func processMatchSuccessNotice(ctx *zero.Ctx, userID int64, wsMsg string) {
 }
 
 func isBotFriend(ctx *zero.Ctx, uid, matchedID int64) bool {
-	var u, m bool
-	for _, friend := range ctx.GetFriendList().Array() {
-		if friend.Get("user_id").Int() == uid {
-			u = true
-		}
-		if friend.Get("user_id").Int() == matchedID {
-			m = true
-		}
-		if u && m {
-			return true
-		}
+	friends := ctx.GetFriendList().Array()
+	friendMap := make(map[int64]bool)
+
+	for _, friend := range friends {
+		friendMap[friend.Get("user_id").Int()] = true
 	}
-	return false
+
+	return friendMap[uid] && friendMap[matchedID]
 }
 
 func registerForwardSession(uid, peerID int64, duration time.Duration) {
