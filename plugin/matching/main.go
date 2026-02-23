@@ -80,19 +80,20 @@ func init() {
 		uid := ctx.Event.UserID
 		gid := ctx.Event.GroupID
 
-		if gid == 0 {
-			gid = -1
-		}
-		err := db.Where("user_id= ?", uid).First(&RejectedMatchUser{}).Error
-		if err == nil || !errors.Is(err, gorm.ErrRecordNotFound) {
-			return
-		}
-		var user User
-
 		resp, err := http.Get("http://127.0.0.1:3000/api/matching/status/" + strconv.FormatInt(uid, 10))
 		if err != nil || resp.StatusCode == http.StatusOK {
 			return
 		}
+
+		if gid == 0 {
+			gid = -1
+		}
+
+		err = db.Where("user_id= ?", uid).First(&RejectedMatchUser{}).Error
+		if err == nil || !errors.Is(err, gorm.ErrRecordNotFound) {
+			return
+		}
+		var user User
 
 		err = db.Preload("OnlineSoftware").Preload("BlUser").Where("user_id = ?", uid).First(&user).Error
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -476,18 +477,19 @@ func init() {
 			ctx.SendPrivateMessage(peerID, message.Text("对方已主动关闭15分钟转发聊天"))
 		})
 
-	engine.OnMessage(zero.OnlyPrivate, zero.OnlyToMe).SetBlock(false).Handle(func(ctx *zero.Ctx) {
-		peerID, ok := getForwardPeer(ctx.Event.UserID)
-		if !ok {
-			return
-		}
-		if len(ctx.Event.Message) == 0 {
-			return
-		}
-		forwardMsg := message.Message{message.Text(fmt.Sprintf("来自%s[%d]的转发消息:\n", ctx.CardOrNickName(ctx.Event.UserID), ctx.Event.UserID))}
-		forwardMsg = append(forwardMsg, ctx.Event.Message...)
-		ctx.SendPrivateMessage(peerID, forwardMsg)
-	})
+	engine.OnMessage(zero.OnlyPrivate, zero.OnlyToMe).SetBlock(false).
+		Handle(func(ctx *zero.Ctx) {
+			peerID, ok := getForwardPeer(ctx.Event.UserID)
+			if !ok {
+				return
+			}
+			if len(ctx.Event.Message) == 0 {
+				return
+			}
+			forwardMsg := message.Message{message.Text(fmt.Sprintf("来自%s[%d]的转发消息:\n", ctx.CardOrNickName(ctx.Event.UserID), ctx.Event.UserID))}
+			forwardMsg = append(forwardMsg, ctx.Event.Message...)
+			ctx.SendPrivateMessage(peerID, forwardMsg)
+		})
 }
 
 func processMatching(ctx *zero.Ctx, user User) {
