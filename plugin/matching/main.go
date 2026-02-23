@@ -64,6 +64,7 @@ func init() {
 		}
 		ctx.SendChain(message.Text("已退出被动匹配黑名单"))
 	})
+	// 主匹配逻辑
 	engine.OnRegex(regexpstring, getDB).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		uid := ctx.Event.UserID
 		gid := ctx.Event.GroupID
@@ -506,7 +507,7 @@ func processMatching(ctx *zero.Ctx, user User) {
 			return
 		}
 		processMatchSuccessNotice(ctx, user.UserID, string(msg))
-		ctx.SendChain(message.Reply(ctx.Event.MessageID), message.At(ctx.Event.UserID), message.Text(string(msg)))
+		// ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text(string(msg)))
 	}
 }
 
@@ -518,21 +519,26 @@ func processMatchSuccessNotice(ctx *zero.Ctx, userID int64, wsMsg string) {
 	if matchedUserID == 0 {
 		return
 	}
-	if !isBotFriend(ctx, userID) || !isBotFriend(ctx, matchedUserID) {
+	if !isBotFriend(ctx, userID, matchedUserID) {
 		notice := message.Text("匹配成功，但双方必须都先加机器人好友，才能开启15分钟转发聊天。")
 		ctx.SendPrivateMessage(userID, notice)
-		ctx.SendPrivateMessage(matchedUserID, notice)
 		return
 	}
 	registerForwardSession(userID, matchedUserID, defaultForwardDuration)
-	notice := message.Text("匹配成功，已开启15分钟转发聊天。你发送给机器人的私聊消息将全部转发给匹配成功的用户；可发送“关闭转发聊天”主动结束。")
+	notice := message.Text("匹配成功，已开启15分钟转发聊天。你发送给机器人的私聊消息将全部转发给匹配成功的用户；可发送“关闭转发聊天”主动结束。如想知道我的所有功能可发送 `/用法matching`")
 	ctx.SendPrivateMessage(userID, notice)
-	ctx.SendPrivateMessage(matchedUserID, notice)
 }
 
-func isBotFriend(ctx *zero.Ctx, uid int64) bool {
+func isBotFriend(ctx *zero.Ctx, uid, matchedID int64) bool {
+	var u, m bool
 	for _, friend := range ctx.GetFriendList().Array() {
 		if friend.Get("user_id").Int() == uid {
+			u = true
+		}
+		if friend.Get("user_id").Int() == matchedID {
+			m = true
+		}
+		if u && m {
 			return true
 		}
 	}
