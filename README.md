@@ -975,6 +975,19 @@ print("run[CQ:image,file="+j["img"]+"]")
 
 </details>
 <details>
+  <summary>匹配</summary>
+
+  `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/matching"`
+
+  - [x] 开始匹配 / 取消匹配 / 查看我的匹配状态
+  - [x] 设置匹配软件 [软件名]（私聊）
+  - [x] 设置匹配时间 [分钟]（私聊）
+  - [x] 设置匹配黑名单 [QQ号]（私聊）
+  - [x] 匹配成功后仅当双方均为机器人好友时，开启15分钟私聊转发聊天
+  - [x] 发送“关闭转发聊天”可主动提前结束15分钟转发聊天
+
+</details>
+<details>
   <summary>钓鱼模拟器</summary>
 
   `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/mcfish"`

@@ -52,6 +52,8 @@ type forwardSession struct {
 	ExpiresAt time.Time
 }
 
+const defaultForwardDuration = 15 * time.Minute
+
 func init() {
 	engine.OnFullMatch("退出被动匹配黑名单", getDB, zero.OnlyPrivate).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		uid := ctx.Event.UserID
@@ -451,7 +453,18 @@ func init() {
 			processMatching(ctx, user)
 		})
 
-	engine.OnMessage(zero.OnlyToMe).SetBlock(false).Handle(func(ctx *zero.Ctx) {
+	engine.OnFullMatchGroup([]string{"关闭转发聊天", "结束转发聊天"}).SetBlock(true).
+		Handle(func(ctx *zero.Ctx) {
+			peerID, ok := unregisterForwardSession(ctx.Event.UserID)
+			if !ok {
+				ctx.SendChain(message.Text("当前没有进行中的转发聊天"))
+				return
+			}
+			ctx.SendChain(message.Text("已关闭15分钟转发聊天"))
+			ctx.SendPrivateMessage(peerID, message.Text("对方已主动关闭15分钟转发聊天"))
+		})
+
+	engine.OnMessage(zero.OnlyPrivate, zero.OnlyToMe).SetBlock(false).Handle(func(ctx *zero.Ctx) {
 		peerID, ok := getForwardPeer(ctx.Event.UserID)
 		if !ok {
 			return
@@ -466,6 +479,10 @@ func init() {
 }
 
 func processMatching(ctx *zero.Ctx, user User) {
+	if _, ok := getForwardPeer(user.UserID); ok {
+		ctx.SendChain(message.Text("你当前正在进行转发聊天，请先发送“关闭转发聊天”后再开始匹配"))
+		return
+	}
 	var dl websocket.Dialer
 	conn, _, err := dl.Dial(fmt.Sprintf("ws://127.0.0.1:3000/api/matching/%d", user.UserID), nil)
 	if err != nil {
@@ -501,10 +518,25 @@ func processMatchSuccessNotice(ctx *zero.Ctx, userID int64, wsMsg string) {
 	if matchedUserID == 0 {
 		return
 	}
-	registerForwardSession(userID, matchedUserID, 15*time.Minute)
-	notice := message.Text("匹配成功，在后续15分钟你发送给机器人的消息将全部转发给匹配成功的用户。")
+	if !isBotFriend(ctx, userID) || !isBotFriend(ctx, matchedUserID) {
+		notice := message.Text("匹配成功，但双方必须都先加机器人好友，才能开启15分钟转发聊天。")
+		ctx.SendPrivateMessage(userID, notice)
+		ctx.SendPrivateMessage(matchedUserID, notice)
+		return
+	}
+	registerForwardSession(userID, matchedUserID, defaultForwardDuration)
+	notice := message.Text("匹配成功，已开启15分钟转发聊天。你发送给机器人的私聊消息将全部转发给匹配成功的用户；可发送“关闭转发聊天”主动结束。")
 	ctx.SendPrivateMessage(userID, notice)
 	ctx.SendPrivateMessage(matchedUserID, notice)
+}
+
+func isBotFriend(ctx *zero.Ctx, uid int64) bool {
+	for _, friend := range ctx.GetFriendList().Array() {
+		if friend.Get("user_id").Int() == uid {
+			return true
+		}
+	}
+	return false
 }
 
 func registerForwardSession(uid, peerID int64, duration time.Duration) {
@@ -528,6 +560,20 @@ func getForwardPeer(uid int64) (int64, bool) {
 			delete(forwardSessions, session.PeerID)
 		}
 		return 0, false
+	}
+	return session.PeerID, true
+}
+
+func unregisterForwardSession(uid int64) (int64, bool) {
+	forwardSessionMu.Lock()
+	defer forwardSessionMu.Unlock()
+	session, ok := forwardSessions[uid]
+	if !ok {
+		return 0, false
+	}
+	delete(forwardSessions, uid)
+	if peerSession, exists := forwardSessions[session.PeerID]; exists && peerSession.PeerID == uid {
+		delete(forwardSessions, session.PeerID)
 	}
 	return session.PeerID, true
 }
