@@ -26,11 +26,11 @@ func processMatchSuccessNotice(ctx *zero.Ctx, userID int64, wsMsg string, matche
 	if matchedUserID == 0 {
 		return
 	}
-	/*	if !isBotFriend(ctx, userID, matchedUserID) {
-		notice := message.Text("匹配成功，但双方必须都先加机器人好友，才能开启15分钟转发聊天。")
+	if !canForwardPrivateMessage(ctx, matchedUserID) {
+		notice := message.Text("匹配成功，但对方还不是机器人好友（或好友列表未刷新），暂时无法开启15分钟转发聊天。")
 		ctx.SendPrivateMessage(userID, notice)
 		return
-	}*/
+	}
 	registerForwardSession(userID, matchedUserID, defaultForwardDuration)
 	notice := message.Text("匹配成功，已开启15分钟转发聊天。你发送给机器人的私聊消息将全部转发给匹配成功的用户；可发送“关闭转发聊天”主动结束。如想知道我的所有功能可发送 `/用法matching`")
 	ctx.SendPrivateMessage(userID, notice)
@@ -160,15 +160,24 @@ func parseMatchWSMessage(raw []byte) (displayMsg string, matchedUserID int64, is
 	return displayMsg, matchedUserID, isMatchSuccess
 }
 
-func isBotFriend(ctx *zero.Ctx, uid, matchedID int64) bool {
-	friends := ctx.GetFriendList().Array()
-	friendMap := make(map[int64]bool)
-
-	for _, friend := range friends {
-		friendMap[friend.Get("user_id").Int()] = true
+func canForwardPrivateMessage(ctx *zero.Ctx, matchedID int64) bool {
+	if matchedID == 0 {
+		return false
 	}
+	friendIDs := getFriendIDSet(ctx)
+	_, ok := friendIDs[matchedID]
+	return ok
+}
 
-	return friendMap[uid] && friendMap[matchedID]
+func getFriendIDSet(ctx *zero.Ctx) map[int64]struct{} {
+	friendIDs := make(map[int64]struct{})
+	for _, friend := range ctx.GetFriendList().Array() {
+		id := friend.Get("user_id").Int()
+		if id != 0 {
+			friendIDs[id] = struct{}{}
+		}
+	}
+	return friendIDs
 }
 
 func registerForwardSession(uid, peerID int64, duration time.Duration) {
@@ -211,10 +220,7 @@ func unregisterForwardSession(uid int64) (int64, bool) {
 }
 
 func parseMatchedIDFromText(ctx *zero.Ctx, uid int64, text string) int64 {
-	friendSet := make(map[int64]struct{})
-	for _, friend := range ctx.GetFriendList().Array() {
-		friendSet[friend.Get("user_id").Int()] = struct{}{}
-	}
+	friendSet := getFriendIDSet(ctx)
 
 	parseID := func(raw string) (int64, bool) {
 		id, err := strconv.ParseInt(raw, 10, 64)
