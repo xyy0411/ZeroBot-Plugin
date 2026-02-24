@@ -8,32 +8,87 @@ import (
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
 	"io"
-	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
-func processMatchSuccessNotice(ctx *zero.Ctx, userID int64, wsMsg string, matchedUserID int64, isMatchSuccess bool) {
+type matchSuccessEvent struct {
+	ctx           *zero.Ctx
+	userID        int64
+	wsMsg         string
+	matchedUserID int64
+	matchID       string
+}
+
+var (
+	matchSuccessWorkerOnce sync.Once
+	matchSuccessEventCh    = make(chan matchSuccessEvent, 64)
+)
+
+func startMatchSuccessWorker() {
+	matchSuccessWorkerOnce.Do(func() {
+		go func() {
+			processedMatchID := make(map[string]time.Time)
+			ticker := time.NewTicker(10 * time.Minute)
+			defer ticker.Stop()
+			for {
+				select {
+				case ev := <-matchSuccessEventCh:
+					if ev.matchID == "" {
+						ev.ctx.SendPrivateMessage(ev.userID, message.Text("匹配成功，但服务端未返回唯一对局ID（match_id），无法开启转发聊天，请联系后端修复。"))
+						continue
+					}
+					eventKey := fmt.Sprintf("%s:%d", ev.matchID, ev.userID)
+					if expiredAt, ok := processedMatchID[eventKey]; ok && time.Now().Before(expiredAt) {
+						continue
+					}
+					processedMatchID[eventKey] = time.Now().Add(defaultForwardDuration)
+					handleMatchSuccessEvent(ev)
+				case <-ticker.C:
+					now := time.Now()
+					for matchID, expiredAt := range processedMatchID {
+						if now.After(expiredAt) {
+							delete(processedMatchID, matchID)
+						}
+					}
+				}
+			}
+		}()
+	})
+}
+
+func handleMatchSuccessEvent(ev matchSuccessEvent) {
+	if ev.matchedUserID == 0 {
+		return
+	}
+	if !canForwardPrivateMessage(ev.ctx, ev.userID) {
+		notice := message.Text("匹配成功，但你当前还不是机器人好友（或好友列表未刷新），暂时无法开启15分钟转发聊天。")
+		ev.ctx.SendPrivateMessage(ev.userID, notice)
+		return
+	}
+	if !registerForwardSession(ev.userID, ev.matchedUserID, defaultForwardDuration) {
+		if peerID, ok := getForwardPeer(ev.userID); ok && peerID == ev.matchedUserID {
+			notice := message.Text("匹配成功，已开启15分钟转发聊天。你发送给机器人的私聊消息将全部转发给匹配成功的用户；可发送“关闭转发聊天”主动结束。如想知道我的所有功能可发送 `/用法matching`")
+			ev.ctx.SendPrivateMessage(ev.userID, notice)
+		}
+		return
+	}
+	notice := message.Text("匹配成功，已开启15分钟转发聊天。你发送给机器人的私聊消息将全部转发给匹配成功的用户；可发送“关闭转发聊天”主动结束。如想知道我的所有功能可发送 `/用法matching`")
+	ev.ctx.SendPrivateMessage(ev.userID, notice)
+}
+
+func enqueueMatchSuccessNotice(ctx *zero.Ctx, userID int64, wsMsg string, matchedUserID int64, matchID string, isMatchSuccess bool) {
 	if !isMatchSuccess && !strings.Contains(wsMsg, "匹配成功") {
 		return
 	}
-	if _, ok := getForwardPeer(userID); ok {
-		return
+	matchSuccessEventCh <- matchSuccessEvent{
+		ctx:           ctx,
+		userID:        userID,
+		wsMsg:         wsMsg,
+		matchedUserID: matchedUserID,
+		matchID:       matchID,
 	}
-	if matchedUserID == 0 {
-		matchedUserID = parseMatchedIDFromText(ctx, userID, wsMsg)
-	}
-	if matchedUserID == 0 {
-		return
-	}
-	if !canForwardPrivateMessage(ctx, matchedUserID) {
-		notice := message.Text("匹配成功，但对方还不是机器人好友（或好友列表未刷新），暂时无法开启15分钟转发聊天。")
-		ctx.SendPrivateMessage(userID, notice)
-		return
-	}
-	registerForwardSession(userID, matchedUserID, defaultForwardDuration)
-	notice := message.Text("匹配成功，已开启15分钟转发聊天。你发送给机器人的私聊消息将全部转发给匹配成功的用户；可发送“关闭转发聊天”主动结束。如想知道我的所有功能可发送 `/用法matching`")
-	ctx.SendPrivateMessage(userID, notice)
 }
 
 func processMatching(ctx *zero.Ctx, user User) {
@@ -79,85 +134,34 @@ func processMatching(ctx *zero.Ctx, user User) {
 		}
 
 		rawMsg := string(msg)
-		displayMsg, matchedUserID, isMatchSuccess := parseMatchWSMessage(msg)
-		processMatchSuccessNotice(ctx, user.UserID, rawMsg, matchedUserID, isMatchSuccess)
+		displayMsg, matchedUserID, matchID, isMatchSuccess := parseMatchWSMessage(msg)
+		enqueueMatchSuccessNotice(ctx, user.UserID, rawMsg, matchedUserID, matchID, isMatchSuccess)
 		ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text(displayMsg))
 	}
 }
 
-func parseMatchWSMessage(raw []byte) (displayMsg string, matchedUserID int64, isMatchSuccess bool) {
+func parseMatchWSMessage(raw []byte) (displayMsg string, matchedUserID int64, matchID string, isMatchSuccess bool) {
 	rawText := string(raw)
 	displayMsg = rawText
 
 	var payload matchWSPayload
-	if err := json.Unmarshal(raw, &payload); err == nil {
-		if payload.Message != "" {
-			displayMsg = payload.Message
-		}
-		if payload.PeerID != 0 {
-			matchedUserID = payload.PeerID
-		}
-		if payload.Type == "match_success" || payload.Type == "matched" {
-			isMatchSuccess = true
-		}
-		if !isMatchSuccess && strings.Contains(displayMsg, "匹配成功") {
-			isMatchSuccess = true
-		}
-		if isMatchSuccess {
-			return displayMsg, matchedUserID, true
-		}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return displayMsg, 0, "", strings.Contains(rawText, "匹配成功")
 	}
-
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &obj); err != nil {
-		return displayMsg, 0, strings.Contains(rawText, "匹配成功")
+	if payload.Message != "" {
+		displayMsg = payload.Message
 	}
-
-	readString := func(key string) string {
-		v, ok := obj[key]
-		if !ok {
-			return ""
-		}
-		var val string
-		if err := json.Unmarshal(v, &val); err != nil {
-			return ""
-		}
-		return val
+	if payload.PeerID != 0 {
+		matchedUserID = payload.PeerID
 	}
-	readInt64 := func(key string) int64 {
-		v, ok := obj[key]
-		if !ok {
-			return 0
-		}
-		var val int64
-		if err := json.Unmarshal(v, &val); err == nil {
-			return val
-		}
-		var strVal string
-		if err := json.Unmarshal(v, &strVal); err == nil {
-			if id, convErr := strconv.ParseInt(strVal, 10, 64); convErr == nil {
-				return id
-			}
-		}
-		return 0
-	}
-
-	if msg := readString("message"); msg != "" {
-		displayMsg = msg
-	}
-	if tp := readString("type"); tp == "match_success" || tp == "matched" {
+	matchID = payload.MatchID
+	if payload.Type == "match_success" {
 		isMatchSuccess = true
-	}
-	for _, key := range []string{"peer_id", "matched_user_id", "matched_id", "target_id", "peerId", "matchedUserID"} {
-		if id := readInt64(key); id != 0 {
-			matchedUserID = id
-			break
-		}
 	}
 	if !isMatchSuccess && strings.Contains(displayMsg, "匹配成功") {
 		isMatchSuccess = true
 	}
-	return displayMsg, matchedUserID, isMatchSuccess
+	return displayMsg, matchedUserID, matchID, isMatchSuccess
 }
 
 func canForwardPrivateMessage(ctx *zero.Ctx, matchedID int64) bool {
@@ -180,12 +184,31 @@ func getFriendIDSet(ctx *zero.Ctx) map[int64]struct{} {
 	return friendIDs
 }
 
-func registerForwardSession(uid, peerID int64, duration time.Duration) {
+func registerForwardSession(uid, peerID int64, duration time.Duration) bool {
 	expiresAt := time.Now().Add(duration)
 	forwardSessionMu.Lock()
 	defer forwardSessionMu.Unlock()
+	if hasActiveForwardSessionLocked(uid) || hasActiveForwardSessionLocked(peerID) {
+		return false
+	}
 	forwardSessions[uid] = forwardSession{PeerID: peerID, ExpiresAt: expiresAt}
 	forwardSessions[peerID] = forwardSession{PeerID: uid, ExpiresAt: expiresAt}
+	return true
+}
+
+func hasActiveForwardSessionLocked(uid int64) bool {
+	session, ok := forwardSessions[uid]
+	if !ok {
+		return false
+	}
+	if time.Now().After(session.ExpiresAt) {
+		delete(forwardSessions, uid)
+		if peerSession, exists := forwardSessions[session.PeerID]; exists && peerSession.PeerID == uid {
+			delete(forwardSessions, session.PeerID)
+		}
+		return false
+	}
+	return true
 }
 
 func getForwardPeer(uid int64) (int64, bool) {
@@ -217,46 +240,4 @@ func unregisterForwardSession(uid int64) (int64, bool) {
 		delete(forwardSessions, session.PeerID)
 	}
 	return session.PeerID, true
-}
-
-func parseMatchedIDFromText(ctx *zero.Ctx, uid int64, text string) int64 {
-	friendSet := getFriendIDSet(ctx)
-
-	parseID := func(raw string) (int64, bool) {
-		id, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil || id == uid {
-			return 0, false
-		}
-		return id, true
-	}
-
-	for _, reg := range matchIDRegexps {
-		matched := reg.FindStringSubmatch(text)
-		if len(matched) < 2 {
-			continue
-		}
-		id, ok := parseID(matched[1])
-		if !ok {
-			continue
-		}
-		if _, isFriend := friendSet[id]; isFriend {
-			return id
-		}
-	}
-
-	var fallback int64
-	matches := qqRegexp.FindAllString(text, -1)
-	for _, m := range matches {
-		id, ok := parseID(m)
-		if !ok {
-			continue
-		}
-		if _, isFriend := friendSet[id]; isFriend {
-			return id
-		}
-		if fallback == 0 {
-			fallback = id
-		}
-	}
-	return fallback
 }

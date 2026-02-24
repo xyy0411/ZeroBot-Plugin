@@ -11,7 +11,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -43,17 +42,13 @@ var regexpstring = `^(有无|有人|谁来)(联机|匹配|打架|对决|玩吗|t
 var (
 	forwardSessionMu sync.RWMutex
 	forwardSessions  = map[int64]forwardSession{}
-	qqRegexp         = regexp.MustCompile(`\d{5,}`)
-	matchIDRegexps   = []*regexp.Regexp{
-		regexp.MustCompile(`(?:与|和|对方|用户|玩家|QQ|qq)[^\d]{0,8}(\d{5,})`),
-		regexp.MustCompile(`(\d{5,})[^\d]{0,8}(?:匹配成功|匹配到|匹配对象)`),
-	}
 )
 
 type matchWSPayload struct {
 	Type    string `json:"type"`
 	Message string `json:"message"`
 	PeerID  int64  `json:"peer_id"`
+	MatchID string `json:"match_id"`
 }
 
 type forwardSession struct {
@@ -64,6 +59,8 @@ type forwardSession struct {
 const defaultForwardDuration = 15 * time.Minute
 
 func init() {
+	startMatchSuccessWorker()
+
 	engine.OnFullMatch("退出被动匹配黑名单", getDB, zero.OnlyPrivate).SetBlock(true).
 		Handle(func(ctx *zero.Ctx) {
 			uid := ctx.Event.UserID
