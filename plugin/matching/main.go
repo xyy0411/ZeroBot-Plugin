@@ -321,20 +321,11 @@ func init() {
 	engine.OnFullMatchGroup([]string{"取消匹配", "退出匹配"}, getDB).SetBlock(true).
 		Handle(func(ctx *zero.Ctx) {
 			uid := ctx.Event.UserID
-			status, body, err := doRequest(http.MethodDelete, "/"+strconv.FormatInt(uid, 10), nil, "")
+			_, _, err := doRequest(http.MethodDelete, "/"+strconv.FormatInt(uid, 10), nil, "")
 			if err != nil {
 				ctx.SendChain(message.Text(err))
 				return
 			}
-			if status >= 200 && status < 300 {
-				if len(strings.TrimSpace(string(body))) == 0 {
-					ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text("已退出匹配队列"))
-					return
-				}
-				ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text(strings.TrimSpace(string(body))))
-				return
-			}
-			ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text(strings.TrimSpace(string(body))))
 		})
 
 	engine.OnFullMatchGroup([]string{"开始匹配", "匹配", "匹配开始"}, getDB).SetBlock(true).
