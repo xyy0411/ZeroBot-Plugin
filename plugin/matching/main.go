@@ -114,7 +114,7 @@ func init() {
 			}
 		})
 
-	engine.OnFullMatch("查看我的匹配状态", getDB).SetBlock(true).
+	engine.OnFullMatchGroup([]string{"查看匹配状态", "查看我的匹配状态"}, getDB).SetBlock(true).
 		Handle(func(ctx *zero.Ctx) {
 			uid := ctx.Event.UserID
 			_, body, err := doRequest(http.MethodGet, "/status/"+strconv.FormatInt(uid, 10), nil, "")
@@ -200,7 +200,7 @@ func init() {
 			ctx.SendChain(message.Text(msg.String()))
 		})
 
-	engine.OnFullMatch("查看我的匹配软件", getDB).SetBlock(true).
+	engine.OnFullMatchGroup([]string{"查看匹配软件", "查看我的匹配软件"}, getDB).SetBlock(true).
 		Handle(func(ctx *zero.Ctx) {
 			uid := ctx.Event.UserID
 			m, err := doMatchInfo(uid)
@@ -211,13 +211,13 @@ func init() {
 			SoftwareList := m.OnlineSoftwares
 			var msg strings.Builder
 			msg.WriteString("当前可用匹配软件如下:\n")
+			if len(SoftwareList) == 0 {
+				msg.WriteString("暂未设置任何匹配软件")
+				ctx.SendChain(message.Text(msg.String()))
+				return
+			}
 
 			for i, software := range SoftwareList {
-				// 判断是否为最后一个元素
-				suffix := ": "
-				if i == len(SoftwareList)-1 {
-					suffix = ""
-				}
 				var softwareType string
 				switch software.Type {
 				case 0:
@@ -226,11 +226,13 @@ func init() {
 					softwareType = "仅主"
 				case 2:
 					softwareType = "仅副"
+				default:
+					softwareType = fmt.Sprintf("未知类型(%d)", software.Type)
 				}
 				msg.WriteString("第")
 				msg.WriteString(strconv.Itoa(i + 1))
 				msg.WriteString("个 ")
-				msg.WriteString(software.Name + suffix + softwareType + "\n")
+				msg.WriteString(software.Name + ": " + softwareType + "\n")
 			}
 			ctx.SendChain(message.Text(msg.String()))
 		})
@@ -296,12 +298,11 @@ func init() {
 					ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text("超时未输入"))
 					return
 				case r := <-recv:
-					answer := r.Event.Message.String()
-					var softwareType int8
-					switch answer {
-					case "仅主":
-						ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text("输入错误"))
-						return
+					answer := strings.TrimSpace(r.Event.Message.String())
+					softwareType, ok := parseSoftwareType(answer)
+					if !ok {
+						ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text("输入错误，请输入 主副皆可/仅主/仅副"))
+						continue
 					}
 
 					if err := ensureProfile(uid, ctx.CardOrNickName(uid), 1800); err != nil {
@@ -376,4 +377,17 @@ func isUserInMatchingQueue(uid int64) (bool, string, error) {
 		return false, "", err
 	}
 	return status == http.StatusOK, strings.TrimSpace(string(body)), nil
+}
+
+func parseSoftwareType(input string) (int8, bool) {
+	switch strings.TrimSpace(strings.ToLower(input)) {
+	case "主副皆可", "主副":
+		return 0, true
+	case "仅主", "主":
+		return 1, true
+	case "仅副", "副":
+		return 2, true
+	default:
+		return 0, false
+	}
 }

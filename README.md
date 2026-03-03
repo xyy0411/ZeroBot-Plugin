@@ -979,7 +979,7 @@ print("run[CQ:image,file="+j["img"]+"]")
 
   `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/matching"`
 
-  - [x] 开始匹配 / 取消匹配 / 查看我的匹配状态
+  - [x] 开始匹配 / 取消匹配 / 查看匹配状态
   - [x] 设置匹配软件 [软件名]（私聊）
   - [x] 设置匹配时间 [分钟]（私聊）
   - [x] 设置匹配黑名单 [QQ号]（私聊）
