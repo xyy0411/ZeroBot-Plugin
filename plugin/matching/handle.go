@@ -1,6 +1,7 @@
 package matching
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,8 @@ import (
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
 	"io"
+	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -30,7 +33,7 @@ func startMatchSuccessWorker() {
 	matchSuccessWorkerOnce.Do(func() {
 		go func() {
 			processedMatchID := make(map[string]time.Time)
-			ticker := time.NewTicker(10 * time.Minute)
+			ticker := time.NewTicker(15 * time.Minute)
 			defer ticker.Stop()
 			for {
 				select {
@@ -39,8 +42,12 @@ func startMatchSuccessWorker() {
 						ev.ctx.SendPrivateMessage(ev.userID, message.Text("匹配成功，但服务端未返回唯一对局ID（match_id），无法开启转发聊天，请联系后端修复。"))
 						continue
 					}
-					eventKey := fmt.Sprintf("%s:%d", ev.matchID, ev.userID)
+					// 使用 matchID 作为唯一标识，而不是 matchID:userID
+					// 这样可以确保同一匹配的两个用户都能正确处理
+					eventKey := ev.matchID
 					if expiredAt, ok := processedMatchID[eventKey]; ok && time.Now().Before(expiredAt) {
+						// 即使已经处理过，也要确保双方都有转发会话
+						handleMatchSuccessEvent(ev)
 						continue
 					}
 					processedMatchID[eventKey] = time.Now().Add(defaultForwardDuration)
@@ -62,20 +69,49 @@ func handleMatchSuccessEvent(ev matchSuccessEvent) {
 	if ev.matchedUserID == 0 {
 		return
 	}
-	if !canForwardPrivateMessage(ev.ctx, ev.userID) {
-		notice := message.Text("匹配成功，但你当前还不是机器人好友（或好友列表未刷新），暂时无法开启15分钟转发聊天。")
-		ev.ctx.SendPrivateMessage(ev.userID, notice)
+
+	var msg strings.Builder
+	msg.WriteString("匹配成功\n当前状态:")
+	defer func() {
+		msg.WriteString("\n如想知道我的所有功能可发送 `/用法matching`")
+		ev.ctx.SendPrivateMessage(ev.userID, msg.String())
+	}()
+
+	masterUserIsBotFriend := canForwardPrivateMessage(ev.ctx, ev.userID)
+	matchedUserIsBotFriend := canForwardPrivateMessage(ev.ctx, ev.matchedUserID)
+
+	switch {
+	case masterUserIsBotFriend && matchedUserIsBotFriend:
+		msg.WriteString("双方都是好友，可直接转发聊天")
+	case masterUserIsBotFriend && !matchedUserIsBotFriend:
+		msg.WriteString("你已是机器人好友，但对方可能不是（或好友列表未刷新），你仍可尝试转发聊天")
+	case !masterUserIsBotFriend && matchedUserIsBotFriend:
+		msg.WriteString("你暂不是机器人好友（或好友列表未刷新），但你仍可尝试转发聊天")
+	default:
+		msg.WriteString("双方都可能不是机器人好友（或好友列表未刷新），15分钟转发聊天可能失败，但可先尝试")
+	}
+
+	msg.WriteString("\n你发给机器人的私聊消息将全部转发给匹配成功的用户；可发送 `关闭转发聊天` 主动结束。")
+
+	// 检查双方是否已经存在转发会话
+	peerID, hasSession := getForwardPeer(ev.userID)
+	matchedPeerID, matchedHasSession := getForwardPeer(ev.matchedUserID)
+
+	if hasSession && matchedHasSession && peerID == ev.matchedUserID && matchedPeerID == ev.userID {
+		// 双方都已存在转发会话，直接返回
+		msg.WriteString("\n已开启15分钟转发聊天")
 		return
 	}
-	if !registerForwardSession(ev.userID, ev.matchedUserID, defaultForwardDuration) {
-		if peerID, ok := getForwardPeer(ev.userID); ok && peerID == ev.matchedUserID {
-			notice := message.Text("匹配成功，已开启15分钟转发聊天。你发送给机器人的私聊消息将全部转发给匹配成功的用户；可发送“关闭转发聊天”主动结束。如想知道我的所有功能可发送 `/用法matching`")
-			ev.ctx.SendPrivateMessage(ev.userID, notice)
-		}
-		return
+
+	// 注册双向转发会话
+	_ = registerForwardSession(ev.userID, ev.matchedUserID, defaultForwardDuration)
+
+	// 再次检查是否成功注册或已存在会话
+	if peerID, ok := getForwardPeer(ev.userID); ok && peerID == ev.matchedUserID {
+		msg.WriteString("\n已开启15分钟转发聊天")
+	} else {
+		msg.WriteString("\n开启转发聊天失败，请重新匹配")
 	}
-	notice := message.Text("匹配成功，已开启15分钟转发聊天。你发送给机器人的私聊消息将全部转发给匹配成功的用户；可发送“关闭转发聊天”主动结束。如想知道我的所有功能可发送 `/用法matching`")
-	ev.ctx.SendPrivateMessage(ev.userID, notice)
 }
 
 func enqueueMatchSuccessNotice(ctx *zero.Ctx, userID int64, wsMsg string, matchedUserID int64, matchID string, isMatchSuccess bool) {
@@ -91,13 +127,13 @@ func enqueueMatchSuccessNotice(ctx *zero.Ctx, userID int64, wsMsg string, matche
 	}
 }
 
-func processMatching(ctx *zero.Ctx, user User) {
-	if _, ok := getForwardPeer(user.UserID); ok {
+func processMatching(ctx *zero.Ctx, userID int64) {
+	if _, ok := getForwardPeer(userID); ok {
 		ctx.SendChain(message.Text("你当前正在进行转发聊天，请先发送“关闭转发聊天”后再开始匹配"))
 		return
 	}
 
-	inQueue, queueMsg, err := isUserInMatchingQueue(user.UserID)
+	inQueue, queueMsg, err := isUserInMatchingQueue(userID)
 	if err != nil {
 		ctx.SendChain(message.Text("ERROR:", err))
 		return
@@ -111,13 +147,7 @@ func processMatching(ctx *zero.Ctx, user User) {
 	}
 
 	var dl websocket.Dialer
-	conn, _, err := dl.Dial(fmt.Sprintf("ws://127.0.0.1:3000/api/matching/%d", user.UserID), nil)
-	if err != nil {
-		ctx.SendChain(message.Text("ERROR:", err))
-		return
-	}
-
-	err = conn.WriteJSON(user)
+	conn, _, err := dl.Dial(fmt.Sprintf("ws://127.0.0.1:3000/api/matching/%d", userID), nil)
 	if err != nil {
 		ctx.SendChain(message.Text("ERROR:", err))
 		return
@@ -135,7 +165,7 @@ func processMatching(ctx *zero.Ctx, user User) {
 
 		rawMsg := string(msg)
 		displayMsg, matchedUserID, matchID, isMatchSuccess := parseMatchWSMessage(msg)
-		enqueueMatchSuccessNotice(ctx, user.UserID, rawMsg, matchedUserID, matchID, isMatchSuccess)
+		enqueueMatchSuccessNotice(ctx, userID, rawMsg, matchedUserID, matchID, isMatchSuccess)
 		ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text(displayMsg))
 	}
 }
@@ -240,4 +270,133 @@ func unregisterForwardSession(uid int64) (int64, bool) {
 		delete(forwardSessions, session.PeerID)
 	}
 	return session.PeerID, true
+}
+
+func apiURL(path string) string {
+	return matchingAPIBase + path
+}
+
+func doMatchInfo(uid int64) (m Matching, err error) {
+	resp, err := http.Get(apiURL("/profile/" + strconv.FormatInt(uid, 10)))
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return m, fmt.Errorf("status code: %d", resp.StatusCode)
+	}
+	all, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return
+	}
+	m1 := make(map[string]any)
+	err = json.Unmarshal(all, &m1)
+	if err != nil {
+		return
+	}
+	m2 := m1["data"].(map[string]any)["matching"]
+	marshal, err := json.Marshal(m2)
+	if err != nil {
+		return
+	}
+	err = json.Unmarshal(marshal, &m)
+	return
+}
+
+func doRequest(method, path string, body io.Reader, contentType string) (int, []byte, error) {
+	req, err := http.NewRequest(method, apiURL(path), body)
+	if err != nil {
+		return 0, nil, err
+	}
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	res, err := (&http.Client{}).Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer res.Body.Close()
+	respBody, err := io.ReadAll(res.Body)
+	if err != nil {
+		return 0, nil, err
+	}
+	return res.StatusCode, respBody, nil
+}
+
+func doJSON(method, path string, payload any) (int, []byte, error) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return 0, nil, err
+	}
+	return doRequest(method, path, bytes.NewReader(data), "application/json")
+}
+
+func ensureProfile(userID int64, userName string, limitTime int64) error {
+
+	_, err := doMatchInfo(userID)
+	if err == nil {
+		return err
+	}
+	status, body, err := doJSON(http.MethodPost, "/profile", map[string]any{
+		"user_id":   userID,
+		"user_name": userName,
+		"expire_at": limitTime,
+	})
+	if err != nil {
+		return err
+	}
+	if status >= 200 && status < 300 {
+		return nil
+	}
+	if status == http.StatusConflict || status == http.StatusBadRequest || status == http.StatusUnprocessableEntity {
+		text := strings.ToLower(string(body))
+		if strings.Contains(text, "exists") || strings.Contains(text, "已存在") {
+			return nil
+		}
+	}
+	return fmt.Errorf("create profile failed: status=%d, body=%s", status, strings.TrimSpace(string(body)))
+}
+
+func updateExpire(userID int64, seconds int64) error {
+	status, body, err := doJSON(http.MethodPatch, "/profile/"+strconv.FormatInt(userID, 10)+"/expire", map[string]any{
+		"limit_time": seconds,
+		"expire":     seconds,
+		"seconds":    seconds,
+	})
+	if err != nil {
+		return err
+	}
+	if status >= 200 && status < 300 {
+		return nil
+	}
+	return fmt.Errorf("更新匹配时间失败: status=%d, body=%s", status, strings.TrimSpace(string(body)))
+}
+
+func addSoftware(userID int64, software string, softwareType int8) error {
+	status, body, err := doJSON(http.MethodPost, "/profile/"+strconv.FormatInt(userID, 10)+"/software", map[string]any{
+		"name":          software,
+		"software_name": software,
+		"type":          softwareType,
+	})
+	if err != nil {
+		return err
+	}
+	if status >= 200 && status < 300 {
+		return nil
+	}
+	return fmt.Errorf("添加匹配软件失败: status=%d, body=%s", status, strings.TrimSpace(string(body)))
+}
+
+func addBlockUser(userID, targetUserID int64) error {
+	status, body, err := doJSON(http.MethodPost, "/profile/"+strconv.FormatInt(userID, 10)+"/block-user", map[string]any{
+		"target_user_id": targetUserID,
+		"bl_user":        targetUserID,
+	})
+	if err != nil {
+		return err
+	}
+	if status >= 200 && status < 300 {
+		return nil
+	}
+	return fmt.Errorf("add block-user failed: status=%d, body=%s", status, strings.TrimSpace(string(body)))
 }
