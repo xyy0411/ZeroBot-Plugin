@@ -136,7 +136,7 @@ func init() {
 			ctx.SendChain(message.Text("匹配时间为 ", m.ExpireAt/60, " 分钟"))
 		})
 
-	engine.OnRegex(`删除匹配软件 (.+)`, zero.OnlyPrivate, getDB).SetBlock(true).
+	engine.OnRegex(`删除匹配软件\s+(.+)`, zero.OnlyPrivate, getDB).SetBlock(true).
 		Handle(func(ctx *zero.Ctx) {
 			uid := ctx.Event.UserID
 			softwareName := strings.ToLower(strings.TrimSpace(ctx.State["regex_matched"].([]string)[1]))
@@ -155,7 +155,7 @@ func init() {
 			ctx.SendChain(message.Text(m["message"]))
 		})
 
-	engine.OnRegex(`删除匹配黑名单 (.+)`, zero.OnlyPrivate, getDB).SetBlock(true).
+	engine.OnRegex(`删除匹配黑名单\s+(.+)`, zero.OnlyPrivate, getDB).SetBlock(true).
 		Handle(func(ctx *zero.Ctx) {
 			uid := ctx.Event.UserID
 			targetText := strings.TrimSpace(ctx.State["regex_matched"].([]string)[1])
@@ -237,7 +237,7 @@ func init() {
 			ctx.SendChain(message.Text(msg.String()))
 		})
 
-	engine.OnRegex(`设置匹配黑名单 (.+)`, zero.OnlyPrivate, getDB).SetBlock(true).
+	engine.OnRegex(`设置匹配黑名单\s+(.+)`, zero.OnlyPrivate, getDB).SetBlock(true).
 		Handle(func(ctx *zero.Ctx) {
 			uid := ctx.Event.UserID
 			targetText := strings.TrimSpace(ctx.State["regex_matched"].([]string)[1])
@@ -258,7 +258,7 @@ func init() {
 			ctx.SendChain(message.Text(fmt.Sprintf("%s[%d] 添加黑名单成功", ctx.CardOrNickName(uid), uid)))
 		})
 
-	engine.OnRegex(`设置匹配时间 (.+)`, zero.OnlyPrivate, getDB).SetBlock(true).
+	engine.OnRegex(`设置匹配时间\s+(.+)`, zero.OnlyPrivate, getDB).SetBlock(true).
 		Handle(func(ctx *zero.Ctx) {
 			uid := ctx.Event.UserID
 			minutesText := strings.TrimSpace(ctx.State["regex_matched"].([]string)[1])
@@ -280,7 +280,7 @@ func init() {
 			ctx.SendChain(message.Text(fmt.Sprintf("%s[%d] 设置匹配时间成功", ctx.CardOrNickName(uid), uid)))
 		})
 
-	engine.OnRegex(`设置匹配软件 (.+)`, zero.OnlyPrivate, getDB).SetBlock(true).
+	engine.OnRegex(`设置匹配软件\s+(.+)`, zero.OnlyPrivate, getDB).SetBlock(true).
 		Handle(func(ctx *zero.Ctx) {
 			uid := ctx.Event.UserID
 			software := strings.ToLower(strings.ReplaceAll(ctx.State["regex_matched"].([]string)[1], " ", ""))
