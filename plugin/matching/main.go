@@ -30,7 +30,7 @@ var (
 	})
 )
 
-var regexpstring = `^(有无|有人|谁来)(联机|匹配|打架|对决|玩吗|to|qd|lh|uu|主机|副机|主副皆可|仅主|仅副)?联机吗?$`
+var regexpstring = `^(有无|有人|谁来)(联机|匹配|打架|对决|玩吗|to|qd|lh|uu|主机|副机|主副皆可|仅主|仅副)?$`
 
 var (
 	forwardSessionMu sync.RWMutex
