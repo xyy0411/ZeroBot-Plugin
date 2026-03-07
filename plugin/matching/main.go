@@ -389,7 +389,7 @@ func init() {
 			peerID, ok := getForwardPeer(ctx.Event.UserID)
 			if !ok {
 				if consumeForwardExpiredNotice(ctx.Event.UserID) {
-					ctx.SendChain(message.Text("转发聊天已结束，如需继续请重新匹配"))
+					ctx.SendChain(message.Text("转发聊天已结束"))
 				}
 				return
 			}
