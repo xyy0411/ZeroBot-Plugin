@@ -39,10 +39,9 @@ func startMatchSuccessWorker() {
 				select {
 				case ev := <-matchSuccessEventCh:
 					if ev.matchID == "" {
-						ev.ctx.SendPrivateMessage(ev.userID, message.Text("匹配成功，但服务端未返回唯一对局ID（match_id），无法开启转发聊天，请联系后端修复。"))
+						ev.ctx.SendPrivateMessage(ev.userID, message.Text("匹配成功，但服务端未返回唯一对局ID（match_id），无法开启转发聊天，请联系管理员修复"))
 						continue
 					}
-					// 使用 matchID 作为唯一标识，而不是 matchID:userID
 					// 这样可以确保同一匹配的两个用户都能正确处理
 					eventKey := ev.matchID
 					if expiredAt, ok := processedMatchID[eventKey]; ok && time.Now().Before(expiredAt) {
@@ -224,6 +223,8 @@ func registerForwardSession(uid, peerID int64, duration time.Duration) bool {
 	}
 	forwardSessions[uid] = forwardSession{PeerID: peerID, ExpiresAt: expiresAt}
 	forwardSessions[peerID] = forwardSession{PeerID: uid, ExpiresAt: expiresAt}
+	delete(forwardExpiredNotices, uid)
+	delete(forwardExpiredNotices, peerID)
 	return true
 }
 

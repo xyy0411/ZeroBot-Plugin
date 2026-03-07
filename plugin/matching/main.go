@@ -33,8 +33,9 @@ var (
 var regexpstring = `^(有无|有人|谁来)(联机|匹配|打架|对决|玩吗|to|qd|lh|uu|主机|副机|主副皆可|仅主|仅副)?$`
 
 var (
-	forwardSessionMu sync.RWMutex
-	forwardSessions  = map[int64]forwardSession{}
+	forwardSessionMu      sync.RWMutex
+	forwardSessions       = map[int64]forwardSession{}
+	forwardExpiredNotices = map[int64]struct{}{}
 )
 
 type matchWSPayload struct {
@@ -387,6 +388,9 @@ func init() {
 		Handle(func(ctx *zero.Ctx) {
 			peerID, ok := getForwardPeer(ctx.Event.UserID)
 			if !ok {
+				if consumeForwardExpiredNotice(ctx.Event.UserID) {
+					ctx.SendChain(message.Text("转发聊天已结束，如需继续请重新匹配"))
+				}
 				return
 			}
 			forwardMsg := message.Message{message.Text(fmt.Sprintf("来自%s[%d]的转发消息:\n", ctx.CardOrNickName(ctx.Event.UserID), ctx.Event.UserID))}
