@@ -105,8 +105,6 @@ func init() {
 							ctx.SendChain(message.Text("ERROR:", err1))
 							return
 						}
-						_ = addSoftware(uid, "to", 0)
-						_ = addSoftware(uid, "uu", 0)
 					}
 					processMatching(ctx, uid)
 					return
@@ -348,6 +346,36 @@ func init() {
 			}
 			ctx.SendChain(message.Text("已关闭15分钟转发聊天"))
 			ctx.SendPrivateMessage(peerID, message.Text("对方已主动关闭15分钟转发聊天"))
+		})
+
+	engine.OnRegex("^(?:增加转发时长|延长转发聊天)\\s*(\\d+)$", zero.OnlyPrivate).SetBlock(true).
+		Handle(func(ctx *zero.Ctx) {
+			uid := ctx.Event.UserID
+			minutesText := strings.TrimSpace(ctx.State["regex_matched"].([]string)[1])
+			minutes, err := strconv.Atoi(minutesText)
+			if err != nil {
+				ctx.SendChain(message.Text("ERROR:", err))
+				return
+			}
+			if minutes <= 0 {
+				ctx.SendChain(message.Text("请输入大于 0 的分钟数"))
+				return
+			}
+
+			peerID, expiresAt, ok := extendForwardSession(uid, time.Duration(minutes)*time.Minute)
+			if !ok {
+				ctx.SendChain(message.Text("当前没有进行中的转发聊天"))
+				return
+			}
+
+			remainingSeconds := int(expiresAt.Sub(time.Now()).Seconds())
+			if remainingSeconds < 0 {
+				remainingSeconds = 0
+			}
+			remainingMinutes := (remainingSeconds + 59) / 60
+
+			ctx.SendChain(message.Text(fmt.Sprintf("已增加 %d 分钟转发时长，当前会话约 %d 分钟后结束", minutes, remainingMinutes)))
+			ctx.SendPrivateMessage(peerID, message.Text(fmt.Sprintf("对方已增加 %d 分钟转发时长，当前会话约 %d 分钟后结束", minutes, remainingMinutes)))
 		})
 
 	engine.OnMessage(zero.OnlyPrivate, zero.OnlyToMe).SetBlock(false).

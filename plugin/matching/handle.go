@@ -272,6 +272,41 @@ func unregisterForwardSession(uid int64) (int64, bool) {
 	return session.PeerID, true
 }
 
+func extendForwardSession(uid int64, duration time.Duration) (int64, time.Time, bool) {
+	forwardSessionMu.Lock()
+	defer forwardSessionMu.Unlock()
+	if duration <= 0 {
+		return 0, time.Time{}, false
+	}
+
+	now := time.Now()
+	session, ok := forwardSessions[uid]
+	if !ok {
+		return 0, time.Time{}, false
+	}
+	if now.After(session.ExpiresAt) {
+		delete(forwardSessions, uid)
+		if peerSession, exists := forwardSessions[session.PeerID]; exists && peerSession.PeerID == uid {
+			delete(forwardSessions, session.PeerID)
+		}
+		return 0, time.Time{}, false
+	}
+
+	peerSession, exists := forwardSessions[session.PeerID]
+	if !exists || peerSession.PeerID != uid || now.After(peerSession.ExpiresAt) {
+		delete(forwardSessions, uid)
+		if exists {
+			delete(forwardSessions, session.PeerID)
+		}
+		return 0, time.Time{}, false
+	}
+
+	newExpiresAt := session.ExpiresAt.Add(duration)
+	forwardSessions[uid] = forwardSession{PeerID: session.PeerID, ExpiresAt: newExpiresAt}
+	forwardSessions[session.PeerID] = forwardSession{PeerID: uid, ExpiresAt: newExpiresAt}
+	return session.PeerID, newExpiresAt, true
+}
+
 func apiURL(path string) string {
 	return matchingAPIBase + path
 }
