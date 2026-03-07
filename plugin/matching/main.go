@@ -362,6 +362,11 @@ func init() {
 				return
 			}
 
+			if minutes > 120 {
+				ctx.SendChain(message.Text("最多只能延长 120 分钟"))
+				return
+			}
+
 			peerID, expiresAt, ok := extendForwardSession(uid, time.Duration(minutes)*time.Minute)
 			if !ok {
 				ctx.SendChain(message.Text("当前没有进行中的转发聊天"))

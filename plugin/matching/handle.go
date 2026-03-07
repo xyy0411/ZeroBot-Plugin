@@ -74,6 +74,7 @@ func handleMatchSuccessEvent(ev matchSuccessEvent) {
 	msg.WriteString("匹配成功\n当前状态:")
 	defer func() {
 		msg.WriteString("\n如想知道我的所有功能可发送 `/用法matching`")
+		msg.WriteString("\n延迟转发聊天可发送`延长转发聊天 [分钟]`")
 		ev.ctx.SendPrivateMessage(ev.userID, msg.String())
 	}()
 
