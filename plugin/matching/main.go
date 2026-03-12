@@ -50,7 +50,7 @@ type forwardSession struct {
 	ExpiresAt time.Time
 }
 
-const defaultForwardDuration = 15 * time.Minute
+const defaultForwardDuration = 2 * time.Hour
 
 func init() {
 	startMatchSuccessWorker()
@@ -345,8 +345,8 @@ func init() {
 				ctx.SendChain(message.Text("当前没有进行中的转发聊天"))
 				return
 			}
-			ctx.SendChain(message.Text("已关闭15分钟转发聊天"))
-			ctx.SendPrivateMessage(peerID, message.Text("对方已主动关闭15分钟转发聊天"))
+			ctx.SendChain(message.Text("已关闭2小时转发聊天"))
+			ctx.SendPrivateMessage(peerID, message.Text("对方已主动关闭2小时转发聊天"))
 		})
 
 	engine.OnRegex("^(?:增加转发时长|延长转发聊天)\\s*(\\d+)$", zero.OnlyPrivate).SetBlock(true).

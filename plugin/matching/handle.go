@@ -88,7 +88,11 @@ func handleMatchSuccessEvent(ev matchSuccessEvent) {
 	case !masterUserIsBotFriend && matchedUserIsBotFriend:
 		msg.WriteString("你暂不是机器人好友（或好友列表未刷新），但你仍可尝试转发聊天")
 	default:
-		msg.WriteString("双方都可能不是机器人好友（或好友列表未刷新），15分钟转发聊天可能失败，但可先尝试")
+		msg.WriteString("双方都可能不是机器人好友（或好友列表未刷新），2小时转发聊天可能失败，但可先尝试")
+	}
+
+	if !masterUserIsBotFriend || !matchedUserIsBotFriend {
+		msg.WriteString("\n如果您未接收到任何对手的消息 可能是转发失败 请您直接通过qq号添加对手进行聊天")
 	}
 
 	msg.WriteString("\n你发给机器人的私聊消息将全部转发给匹配成功的用户；可发送 `关闭转发聊天` 主动结束。")
@@ -99,7 +103,7 @@ func handleMatchSuccessEvent(ev matchSuccessEvent) {
 
 	if hasSession && matchedHasSession && peerID == ev.matchedUserID && matchedPeerID == ev.userID {
 		// 双方都已存在转发会话，直接返回
-		msg.WriteString("\n已开启15分钟转发聊天")
+		msg.WriteString("\n已开启2小时转发聊天")
 		return
 	}
 
@@ -108,7 +112,7 @@ func handleMatchSuccessEvent(ev matchSuccessEvent) {
 
 	// 再次检查是否成功注册或已存在会话
 	if peerID, ok := getForwardPeer(ev.userID); ok && peerID == ev.matchedUserID {
-		msg.WriteString("\n已开启15分钟转发聊天")
+		msg.WriteString("\n已开启2小时转发聊天")
 	} else {
 		msg.WriteString("\n开启转发聊天失败，请重新匹配")
 	}
