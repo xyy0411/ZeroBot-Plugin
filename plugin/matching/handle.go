@@ -400,6 +400,7 @@ func ensureProfile(userID int64, userName string, limitTime int64) error {
 
 func updateExpire(userID int64, seconds int64) error {
 	status, body, err := doJSON(http.MethodPatch, "/profile/"+strconv.FormatInt(userID, 10)+"/expire", map[string]any{
+		"expire_at":  seconds,
 		"limit_time": seconds,
 		"expire":     seconds,
 		"seconds":    seconds,
