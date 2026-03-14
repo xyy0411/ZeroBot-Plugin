@@ -400,10 +400,7 @@ func ensureProfile(userID int64, userName string, limitTime int64) error {
 
 func updateExpire(userID int64, seconds int64) error {
 	status, body, err := doJSON(http.MethodPatch, "/profile/"+strconv.FormatInt(userID, 10)+"/expire", map[string]any{
-		"expire_at":  seconds,
-		"limit_time": seconds,
-		"expire":     seconds,
-		"seconds":    seconds,
+		"expire_at": seconds,
 	})
 	if err != nil {
 		return err
@@ -432,7 +429,6 @@ func addSoftware(userID int64, software string, softwareType int8) error {
 func addBlockUser(userID, targetUserID int64) error {
 	status, body, err := doJSON(http.MethodPost, "/profile/"+strconv.FormatInt(userID, 10)+"/block-user", map[string]any{
 		"target_user_id": targetUserID,
-		"bl_user":        targetUserID,
 	})
 	if err != nil {
 		return err
@@ -440,5 +436,5 @@ func addBlockUser(userID, targetUserID int64) error {
 	if status >= 200 && status < 300 {
 		return nil
 	}
-	return fmt.Errorf("add block-user failed: status=%d, body=%s", status, strings.TrimSpace(string(body)))
+	return fmt.Errorf("添加黑名单错误: status=%d, body=%s", status, strings.TrimSpace(string(body)))
 }

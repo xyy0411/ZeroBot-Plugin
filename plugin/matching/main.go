@@ -318,7 +318,7 @@ func init() {
 			}
 		})
 
-	engine.OnFullMatchGroup([]string{"取消匹配", "退出匹配"}, getDB).SetBlock(true).
+	engine.OnFullMatchGroup([]string{"取消匹配", "退出匹配", "停止匹配"}, getDB).SetBlock(true).
 		Handle(func(ctx *zero.Ctx) {
 			uid := ctx.Event.UserID
 			_, _, err := doRequest(http.MethodDelete, "/"+strconv.FormatInt(uid, 10), nil, "")
@@ -389,7 +389,7 @@ func init() {
 			peerID, ok := getForwardPeer(ctx.Event.UserID)
 			if !ok {
 				if consumeForwardExpiredNotice(ctx.Event.UserID) {
-					ctx.SendChain(message.Text("转发聊天已结束"))
+					ctx.SendChain(message.At(ctx.Event.UserID), message.Text("转发聊天已结束"))
 				}
 				return
 			}
