@@ -135,6 +135,32 @@ func init() {
 			ctx.SendChain(message.Text("匹配时间为 ", m.ExpireAt/60, " 分钟"))
 		})
 
+	engine.OnFullMatchGroup([]string{"查看当日匹配统计", "查看今日匹配统计"}, getDB).SetBlock(true).
+		Handle(func(ctx *zero.Ctx) {
+			summary, img, err := buildTodayMatchingStatsChart()
+			if err != nil {
+				ctx.SendChain(message.Text("ERROR:", err))
+				return
+			}
+			ctx.SendChain(message.Text(summary))
+			if len(img) > 0 {
+				ctx.SendChain(message.ImageBytes(img))
+			}
+		})
+
+	engine.OnFullMatchGroup([]string{"查看累计匹配统计", "查看总匹配统计"}, getDB).SetBlock(true).
+		Handle(func(ctx *zero.Ctx) {
+			summary, img, err := buildAllMatchingStatsChart()
+			if err != nil {
+				ctx.SendChain(message.Text("ERROR:", err))
+				return
+			}
+			ctx.SendChain(message.Text(summary))
+			if len(img) > 0 {
+				ctx.SendChain(message.ImageBytes(img))
+			}
+		})
+
 	engine.OnRegex(`删除匹配软件\s*(.+)`, zero.OnlyPrivate, getDB).SetBlock(true).
 		Handle(func(ctx *zero.Ctx) {
 			uid := ctx.Event.UserID
