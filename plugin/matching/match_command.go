@@ -78,8 +78,15 @@ func handleViewMatchingExpire(uid int64) (string, error) {
 	return fmt.Sprintf("匹配时间为 %d 分钟", m.ExpireAt/60), nil
 }
 
-func handleCancelMatching(uid int64) error {
-	return cancelMatching(uid)
+func handleCancelMatching(uid int64) (string, error) {
+	msg, err := cancelMatching(uid)
+	if err != nil {
+		return "", err
+	}
+	if msg == "" {
+		return "已取消匹配", nil
+	}
+	return msg, nil
 }
 
 func handleStartMatching(ctx *zero.Ctx) {

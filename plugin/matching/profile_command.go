@@ -25,7 +25,14 @@ func handleDeleteBlockUser(uid int64, targetText string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return deleteBlockUser(uid, targetID)
+	msg, err := deleteBlockUser(uid, targetID)
+	if err != nil {
+		return "", err
+	}
+	if msg == "" {
+		return fmt.Sprintf("已删除黑名单用户 %d", targetID), nil
+	}
+	return msg, nil
 }
 
 func handleViewBlockUsers(uid int64) (string, error) {
@@ -86,10 +93,14 @@ func handleSetBlockUser(uid int64, nickname, targetText string) (string, error) 
 	if err = ensureProfile(uid, nickname, defaultProfileExpireBlock); err != nil {
 		return "", err
 	}
-	if err = addBlockUser(uid, targetID); err != nil {
+	msg, err := addBlockUser(uid, targetID)
+	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("%s[%d] 添加黑名单成功", nickname, uid), nil
+	if msg == "" {
+		return fmt.Sprintf("%s[%d] 添加黑名单成功", nickname, uid), nil
+	}
+	return msg, nil
 }
 
 func handleSetMatchingExpire(uid int64, nickname, minutesText string) (string, error) {
@@ -102,10 +113,14 @@ func handleSetMatchingExpire(uid int64, nickname, minutesText string) (string, e
 	if err = ensureProfile(uid, nickname, seconds); err != nil {
 		return "", err
 	}
-	if err = updateExpire(uid, seconds); err != nil {
+	msg, err := updateExpire(uid, seconds)
+	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("%s[%d] 设置匹配时间成功", nickname, uid), nil
+	if msg == "" {
+		return fmt.Sprintf("%s[%d] 设置匹配时间成功", nickname, uid), nil
+	}
+	return msg, nil
 }
 
 func handleSetSoftware(ctx *zero.Ctx) {
@@ -148,8 +163,12 @@ func setSoftwareWithType(uid int64, nickname, software string, softwareType int8
 	if err := ensureProfile(uid, nickname, defaultProfileExpire); err != nil {
 		return "", err
 	}
-	if err := addSoftware(uid, software, softwareType); err != nil {
+	msg, err := addSoftware(uid, software, softwareType)
+	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("%s[%d] 设置匹配软件成功", nickname, uid), nil
+	if msg == "" {
+		return fmt.Sprintf("%s[%d] 设置匹配软件成功", nickname, uid), nil
+	}
+	return msg, nil
 }

@@ -103,32 +103,32 @@ func ensureProfile(userID int64, userName string, limitTime int64) error {
 	return fmt.Errorf("create profile failed: status=%d, body=%s", status, strings.TrimSpace(string(body)))
 }
 
-func updateExpire(userID int64, seconds int64) error {
+func updateExpire(userID int64, seconds int64) (string, error) {
 	status, body, err := doJSON(http.MethodPatch, "/profile/"+strconv.FormatInt(userID, 10)+"/expire", map[string]any{
 		"expire_at": seconds,
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 	if status >= 200 && status < 300 {
-		return nil
+		return responseMessage(body), nil
 	}
-	return fmt.Errorf("更新匹配时间失败: status=%d, body=%s", status, strings.TrimSpace(string(body)))
+	return "", fmt.Errorf("更新匹配时间失败: status=%d, body=%s", status, strings.TrimSpace(string(body)))
 }
 
-func addSoftware(userID int64, software string, softwareType int8) error {
+func addSoftware(userID int64, software string, softwareType int8) (string, error) {
 	status, body, err := doJSON(http.MethodPost, "/profile/"+strconv.FormatInt(userID, 10)+"/software", map[string]any{
 		"name":          software,
 		"software_name": software,
 		"type":          softwareType,
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 	if status >= 200 && status < 300 {
-		return nil
+		return responseMessage(body), nil
 	}
-	return fmt.Errorf("添加匹配软件失败: status=%d, body=%s", status, strings.TrimSpace(string(body)))
+	return "", fmt.Errorf("添加匹配软件失败: status=%d, body=%s", status, strings.TrimSpace(string(body)))
 }
 
 func deleteSoftware(userID int64, softwareName string) (string, error) {
@@ -138,22 +138,22 @@ func deleteSoftware(userID int64, softwareName string) (string, error) {
 		return "", err
 	}
 	if status >= 200 && status < 300 {
-		return "", nil
+		return responseMessage(body), nil
 	}
 	return responseMessage(body), nil
 }
 
-func addBlockUser(userID, targetUserID int64) error {
+func addBlockUser(userID, targetUserID int64) (string, error) {
 	status, body, err := doJSON(http.MethodPost, "/profile/"+strconv.FormatInt(userID, 10)+"/block-user", map[string]any{
 		"target_user_id": targetUserID,
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 	if status >= 200 && status < 300 {
-		return nil
+		return responseMessage(body), nil
 	}
-	return fmt.Errorf("添加黑名单错误: status=%d, body=%s", status, strings.TrimSpace(string(body)))
+	return "", fmt.Errorf("添加黑名单错误: status=%d, body=%s", status, strings.TrimSpace(string(body)))
 }
 
 func deleteBlockUser(userID, targetID int64) (string, error) {
@@ -165,15 +165,20 @@ func deleteBlockUser(userID, targetID int64) (string, error) {
 	return responseMessage(body), nil
 }
 
-func cancelMatching(userID int64) error {
-	_, _, err := doRequest(http.MethodDelete, "/"+strconv.FormatInt(userID, 10), nil, "")
-	return err
+func cancelMatching(userID int64) (string, error) {
+	_, body, err := doRequest(http.MethodDelete, "/"+strconv.FormatInt(userID, 10), nil, "")
+	if err != nil {
+		return "", err
+	}
+	return responseMessage(body), nil
 }
 
 func responseMessage(body []byte) string {
 	m := make(map[string]string)
-	if err := json.Unmarshal(body, &m); err != nil {
-		return strings.TrimSpace(string(body))
+	if err := json.Unmarshal(body, &m); err == nil {
+		if msg := strings.TrimSpace(m["message"]); msg != "" {
+			return msg
+		}
 	}
-	return m["message"]
+	return strings.TrimSpace(string(body))
 }

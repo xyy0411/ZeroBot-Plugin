@@ -91,8 +91,8 @@ func init() {
 
 	engine.OnFullMatchGroup([]string{"取消匹配", "退出匹配", "停止匹配"}, getDB).SetBlock(true).
 		Handle(func(ctx *zero.Ctx) {
-			err := handleCancelMatching(ctx.Event.UserID)
-			sendTextResult(ctx, "", err)
+			msg, err := handleCancelMatching(ctx.Event.UserID)
+			sendTextResult(ctx, msg, err)
 		})
 
 	engine.OnFullMatchGroup([]string{"开始匹配", "匹配", "匹配开始"}, getDB).SetBlock(true).
