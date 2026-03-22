@@ -53,7 +53,7 @@ func handleForwardMessage(ctx *zero.Ctx) {
 	peerID, ok := forwardManager.GetPeer(ctx.Event.UserID)
 	if !ok {
 		if forwardManager.ConsumeExpiredNotice(ctx.Event.UserID) {
-			ctx.SendChain(message.At(ctx.Event.UserID), message.Text("转发聊天已结束"))
+			ctx.SendChain(message.At(ctx.Event.UserID), message.Text("转发聊天已结束了哦"))
 		}
 		return
 	}

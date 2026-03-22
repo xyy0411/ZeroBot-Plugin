@@ -249,6 +249,9 @@ func (m *ForwardManager) processMatching(ctx *zero.Ctx, userID int64) {
 			matchID:       matchID,
 		}, isMatchSuccess)
 		ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text(displayMsg))
+		if isMatchSuccess && ctx.Event.GroupID != 0 {
+			ctx.SendPrivateMessage(userID, message.Text(displayMsg))
+		}
 	}
 }
 
