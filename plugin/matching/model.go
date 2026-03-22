@@ -1,12 +1,5 @@
 package matching
 
-import (
-	fcext "github.com/FloatTech/floatbox/ctxext"
-	"github.com/jinzhu/gorm"
-	zero "github.com/wdvxdr1123/ZeroBot"
-	"github.com/wdvxdr1123/ZeroBot/message"
-)
-
 // RejectedMatchUser 用于检查是否已被用户拒绝过匹配邀请
 type RejectedMatchUser struct {
 	ID     uint  `gorm:"primary_key"`
@@ -31,16 +24,3 @@ type OnlineSoftware struct {
 	Name string `json:"name"`
 	Type int8   `json:"type"`
 }
-
-var (
-	db    *gorm.DB
-	getDB = fcext.DoOnceOnSuccess(func(ctx *zero.Ctx) bool {
-		db, _ = gorm.Open("sqlite3", engine.DataFolder()+"matching.db")
-
-		if err := db.AutoMigrate(RejectedMatchUser{}).Error; err != nil {
-			ctx.SendChain(message.Text("ERROR:", err))
-			return false
-		}
-		return true
-	})
-)
