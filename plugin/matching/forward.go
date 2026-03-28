@@ -27,6 +27,12 @@ type forwardSession struct {
 	ExpiresAt time.Time
 }
 
+type forwardPair struct {
+	UserID    int64
+	PeerID    int64
+	ExpiresAt time.Time
+}
+
 type matchSuccessEvent struct {
 	ctx           *zero.Ctx
 	userID        int64
@@ -98,6 +104,37 @@ func (m *ForwardManager) Close(uid int64) (int64, bool) {
 	}
 	m.deleteSessionPairLocked(uid, session.PeerID)
 	return session.PeerID, true
+}
+
+func (m *ForwardManager) CloseAll() []forwardPair {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	now := time.Now()
+	pairs := make([]forwardPair, 0, len(m.sessions)/2)
+	seen := make(map[int64]struct{}, len(m.sessions))
+	for uid, session := range m.sessions {
+		if _, ok := seen[uid]; ok {
+			continue
+		}
+		if now.After(session.ExpiresAt) {
+			continue
+		}
+		peerSession, ok := m.sessions[session.PeerID]
+		if !ok || peerSession.PeerID != uid || now.After(peerSession.ExpiresAt) {
+			continue
+		}
+		pairs = append(pairs, forwardPair{
+			UserID:    uid,
+			PeerID:    session.PeerID,
+			ExpiresAt: session.ExpiresAt,
+		})
+		seen[uid] = struct{}{}
+		seen[session.PeerID] = struct{}{}
+	}
+
+	m.sessions = map[int64]forwardSession{}
+	return pairs
 }
 
 func (m *ForwardManager) GetPeer(uid int64) (int64, bool) {
