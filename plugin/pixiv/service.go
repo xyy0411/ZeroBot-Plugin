@@ -6,16 +6,10 @@ import (
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/api"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/cache"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
-	"github.com/FloatTech/floatbox/file"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
 	"net/http"
-	"net/url"
-	"os"
-	"path"
-	"path/filepath"
 	"sync"
-	"time"
 )
 
 var cacheFilling sync.Map
@@ -77,9 +71,9 @@ func (s *Service) Release(userID int64) {
 func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 	downloadSem := make(chan struct{}, s.DownloadWorkers)
 	type DLResult struct {
-		Ill      model.IllustCache
-		ImgPaths []string
-		Err      error
+		Ill    model.IllustCache
+		Images [][]byte
+		Err    error
 	}
 
 	gid := ctx.Event.GroupID
@@ -105,7 +99,7 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 
 				type pageResult struct {
 					index int
-					path  string
+					data  []byte
 					err   error
 				}
 
@@ -131,25 +125,9 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 							}
 							return
 						}
-						imagePath, pathErr := createPixivTempImagePath(ill1.PID, page+1, u)
-						if pathErr != nil {
-							pageCh <- pageResult{
-								index: page,
-								err:   pathErr,
-							}
-							return
-						}
-						if writeErr := os.WriteFile(imagePath, img, 0644); writeErr != nil {
-							pageCh <- pageResult{
-								index: page,
-								err:   writeErr,
-							}
-							return
-						}
-
 						pageCh <- pageResult{
 							index: page,
-							path:  imagePath,
+							data:  img,
 							err:   err,
 						}
 					}(i)
@@ -162,29 +140,22 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 				}()
 
 				// 预分配，保证顺序
-				d.ImgPaths = make([]string, ill1.PageCount)
+				d.Images = make([][]byte, ill1.PageCount)
 
 				for r := range pageCh {
 					if r.err != nil && d.Err == nil {
 						d.Err = r.err
 					}
-					d.ImgPaths[r.index] = r.path
+					if len(r.data) == 0 {
+						continue
+					}
+					d.Images[r.index] = r.data
 				}
 
 			} else {
 				img, err := s.API.Client.FetchPixivImage(ill1, ill1.OriginalURL)
 				if err == nil {
-					imagePath, pathErr := createPixivTempImagePath(ill1.PID, 0, ill1.OriginalURL)
-					if pathErr != nil {
-						d.Err = pathErr
-						results <- d
-						return
-					}
-					if writeErr := os.WriteFile(imagePath, img, 0644); writeErr != nil {
-						d.Err = writeErr
-					} else {
-						d.ImgPaths = append(d.ImgPaths, imagePath)
-					}
+					d.Images = append(d.Images, img)
 				} else {
 					d.Err = err
 				}
@@ -201,7 +172,6 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 		res := <-results
 
 		if res.Err != nil {
-			cleanupPixivImages(res.ImgPaths)
 			var httpErr *api.HTTPStatusError
 			if errors.As(res.Err, &httpErr) && httpErr.StatusCode == http.StatusNotFound {
 				if err := s.DB.DeleteIllustByPID(res.Ill.PID); err != nil {
@@ -226,84 +196,20 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 			"\n浏览数:", res.Ill.TotalView,
 			"\n发布时间:", res.Ill.CreateDate,
 		))
-		for i := 0; i < len(res.ImgPaths); i++ {
-			if res.ImgPaths[i] == "" {
+		for i := 0; i < len(res.Images); i++ {
+			if len(res.Images[i]) == 0 {
 				continue
 			}
-			msg = append(msg, message.Image("file:///"+filepath.ToSlash(res.ImgPaths[i])))
+			msg = append(msg, message.ImageBytes(res.Images[i]))
 		}
 
 		ctx.Send(msg)
-		// ZeroBot 发送是异步的，立即删除本地文件可能导致 OneBot 侧来不及读取。
-		// 这里延迟清理，避免出现 "ENOENT: no such file or directory"。
-		scheduleCleanupPixivImages(res.ImgPaths, 15*time.Second)
 
 		s.DB.Create(&model.SentImage{
 			GroupID: gid,
 			PID:     res.Ill.PID,
 		})
 	}
-}
-
-func createPixivTempImagePath(pid int64, index int, rawURL string) (string, error) {
-	ext := pixivImageExt(rawURL)
-	baseDir := filepath.Join(file.BOTPATH, "data", "pixiv")
-	if err := os.MkdirAll(baseDir, 0o775); err != nil {
-		return "", err
-	}
-	pattern := fmt.Sprintf("%d-", pid)
-	if index > 0 {
-		pattern = fmt.Sprintf("%d-%d-", pid, index)
-	}
-	tmp, err := os.CreateTemp(baseDir, pattern+"*"+ext)
-	if err != nil {
-		return "", err
-	}
-	name := tmp.Name()
-	if err = tmp.Close(); err != nil {
-		return "", err
-	}
-	return name, nil
-}
-
-func buildPixivImagePath(pid int64, index int, rawURL string) string {
-	ext := pixivImageExt(rawURL)
-	if index > 0 {
-		return filepath.Join(file.BOTPATH, "data", "pixiv", fmt.Sprintf("%d-%d%s", pid, index, ext))
-	}
-	return filepath.Join(file.BOTPATH, "data", "pixiv", fmt.Sprintf("%d%s", pid, ext))
-}
-
-func pixivImageExt(rawURL string) string {
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return ".jpg"
-	}
-	ext := path.Ext(parsed.Path)
-	if ext == "" {
-		return ".jpg"
-	}
-	return ext
-}
-
-func cleanupPixivImages(paths []string) {
-	for _, imagePath := range paths {
-		if imagePath == "" {
-			continue
-		}
-		_ = os.Remove(imagePath)
-	}
-}
-
-func scheduleCleanupPixivImages(paths []string, delay time.Duration) {
-	if len(paths) == 0 {
-		return
-	}
-	local := append([]string(nil), paths...)
-	go func() {
-		time.Sleep(delay)
-		cleanupPixivImages(local)
-	}()
 }
 
 func (s *Service) BackgroundCacheFiller(keyword string, minCache int, r18Req bool, fetchCount int, gid int64) {
