@@ -131,7 +131,14 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 							}
 							return
 						}
-						imagePath := buildPixivImagePath(ill1.PID, page+1, u)
+						imagePath, pathErr := createPixivTempImagePath(ill1.PID, page+1, u)
+						if pathErr != nil {
+							pageCh <- pageResult{
+								index: page,
+								err:   pathErr,
+							}
+							return
+						}
 						if writeErr := os.WriteFile(imagePath, img, 0644); writeErr != nil {
 							pageCh <- pageResult{
 								index: page,
@@ -167,7 +174,12 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 			} else {
 				img, err := s.API.Client.FetchPixivImage(ill1, ill1.OriginalURL)
 				if err == nil {
-					imagePath := buildPixivImagePath(ill1.PID, 0, ill1.OriginalURL)
+					imagePath, pathErr := createPixivTempImagePath(ill1.PID, 0, ill1.OriginalURL)
+					if pathErr != nil {
+						d.Err = pathErr
+						results <- d
+						return
+					}
 					if writeErr := os.WriteFile(imagePath, img, 0644); writeErr != nil {
 						d.Err = writeErr
 					} else {
@@ -231,6 +243,27 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 			PID:     res.Ill.PID,
 		})
 	}
+}
+
+func createPixivTempImagePath(pid int64, index int, rawURL string) (string, error) {
+	ext := pixivImageExt(rawURL)
+	baseDir := filepath.Join(file.BOTPATH, "data", "pixiv")
+	if err := os.MkdirAll(baseDir, 0o775); err != nil {
+		return "", err
+	}
+	pattern := fmt.Sprintf("%d-", pid)
+	if index > 0 {
+		pattern = fmt.Sprintf("%d-%d-", pid, index)
+	}
+	tmp, err := os.CreateTemp(baseDir, pattern+"*"+ext)
+	if err != nil {
+		return "", err
+	}
+	name := tmp.Name()
+	if err = tmp.Close(); err != nil {
+		return "", err
+	}
+	return name, nil
 }
 
 func buildPixivImagePath(pid int64, index int, rawURL string) string {
