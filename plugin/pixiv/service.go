@@ -15,6 +15,7 @@ import (
 	"path"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 var cacheFilling sync.Map
@@ -130,7 +131,14 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 							}
 							return
 						}
-						imagePath := buildPixivImagePath(ill1.PID, page+1, u)
+						imagePath, pathErr := createPixivTempImagePath(ill1.PID, page+1, u)
+						if pathErr != nil {
+							pageCh <- pageResult{
+								index: page,
+								err:   pathErr,
+							}
+							return
+						}
 						if writeErr := os.WriteFile(imagePath, img, 0644); writeErr != nil {
 							pageCh <- pageResult{
 								index: page,
@@ -166,7 +174,12 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 			} else {
 				img, err := s.API.Client.FetchPixivImage(ill1, ill1.OriginalURL)
 				if err == nil {
-					imagePath := buildPixivImagePath(ill1.PID, 0, ill1.OriginalURL)
+					imagePath, pathErr := createPixivTempImagePath(ill1.PID, 0, ill1.OriginalURL)
+					if pathErr != nil {
+						d.Err = pathErr
+						results <- d
+						return
+					}
 					if writeErr := os.WriteFile(imagePath, img, 0644); writeErr != nil {
 						d.Err = writeErr
 					} else {
@@ -221,14 +234,36 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 		}
 
 		ctx.Send(msg)
-
-		cleanupPixivImages(res.ImgPaths)
+		// ZeroBot 发送是异步的，立即删除本地文件可能导致 OneBot 侧来不及读取。
+		// 这里延迟清理，避免出现 "ENOENT: no such file or directory"。
+		scheduleCleanupPixivImages(res.ImgPaths, 15*time.Second)
 
 		s.DB.Create(&model.SentImage{
 			GroupID: gid,
 			PID:     res.Ill.PID,
 		})
 	}
+}
+
+func createPixivTempImagePath(pid int64, index int, rawURL string) (string, error) {
+	ext := pixivImageExt(rawURL)
+	baseDir := filepath.Join(file.BOTPATH, "data", "pixiv")
+	if err := os.MkdirAll(baseDir, 0o775); err != nil {
+		return "", err
+	}
+	pattern := fmt.Sprintf("%d-", pid)
+	if index > 0 {
+		pattern = fmt.Sprintf("%d-%d-", pid, index)
+	}
+	tmp, err := os.CreateTemp(baseDir, pattern+"*"+ext)
+	if err != nil {
+		return "", err
+	}
+	name := tmp.Name()
+	if err = tmp.Close(); err != nil {
+		return "", err
+	}
+	return name, nil
 }
 
 func buildPixivImagePath(pid int64, index int, rawURL string) string {
@@ -258,6 +293,17 @@ func cleanupPixivImages(paths []string) {
 		}
 		_ = os.Remove(imagePath)
 	}
+}
+
+func scheduleCleanupPixivImages(paths []string, delay time.Duration) {
+	if len(paths) == 0 {
+		return
+	}
+	local := append([]string(nil), paths...)
+	go func() {
+		time.Sleep(delay)
+		cleanupPixivImages(local)
+	}()
 }
 
 func (s *Service) BackgroundCacheFiller(keyword string, minCache int, r18Req bool, fetchCount int, gid int64) {
