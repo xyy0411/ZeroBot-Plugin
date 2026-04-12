@@ -15,6 +15,7 @@ import (
 	"path"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 var cacheFilling sync.Map
@@ -221,8 +222,9 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 		}
 
 		ctx.Send(msg)
-
-		cleanupPixivImages(res.ImgPaths)
+		// ZeroBot 发送是异步的，立即删除本地文件可能导致 OneBot 侧来不及读取。
+		// 这里延迟清理，避免出现 "ENOENT: no such file or directory"。
+		scheduleCleanupPixivImages(res.ImgPaths, 15*time.Second)
 
 		s.DB.Create(&model.SentImage{
 			GroupID: gid,
@@ -258,6 +260,17 @@ func cleanupPixivImages(paths []string) {
 		}
 		_ = os.Remove(imagePath)
 	}
+}
+
+func scheduleCleanupPixivImages(paths []string, delay time.Duration) {
+	if len(paths) == 0 {
+		return
+	}
+	local := append([]string(nil), paths...)
+	go func() {
+		time.Sleep(delay)
+		cleanupPixivImages(local)
+	}()
 }
 
 func (s *Service) BackgroundCacheFiller(keyword string, minCache int, r18Req bool, fetchCount int, gid int64) {
