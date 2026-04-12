@@ -63,6 +63,7 @@ import (
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/emojimix"     // 合成emoji
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/event"        // 好友申请群聊邀请事件处理
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/inject"       // 注入指令
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/matching"     // bvn匹配系统
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/wife"         // 抽老婆
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/wordcount"    // 聊天热词
 
@@ -128,11 +129,11 @@ func init() {
 	h := flag.Bool("h", false, "Display this help.")
 	// g := flag.String("g", "127.0.0.1:3000", "Set webui url.")
 	// 直接写死 AccessToken 时，请更改下面第二个参数
-	token := flag.String("t", "", "Set AccessToken of WSClient.")
+	token := flag.String("t", "5lvVcvo(uiiQ@o]z", "Set AccessToken of WSClient.")
 	// 直接写死 URL 时，请更改下面第二个参数
 	url := flag.String("u", "ws://127.0.0.1:6700", "Set Url of WSClient.")
 	// 默认昵称
-	adana := flag.String("n", "椛椛", "Set default nickname.")
+	adana := flag.String("n", "亚托莉", "Set default nickname.")
 	prefix := flag.String("p", "/", "Set command prefix.")
 	runcfg := flag.String("c", "", "Run from config file.")
 	save := flag.String("s", "", "Save default config to file and exit.")
