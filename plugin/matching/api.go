@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 )
@@ -132,8 +131,19 @@ func addSoftware(userID int64, software string, softwareType int8) (string, erro
 }
 
 func deleteSoftware(userID int64, softwareName string) (string, error) {
-	path := fmt.Sprintf("/profile/%d/software/%s", userID, url.PathEscape(softwareName))
-	status, body, err := doRequest(http.MethodDelete, path, nil, "")
+	path := fmt.Sprintf("/profile/%d/software", userID)
+
+	var input struct {
+		SoftwareName string `json:"software_name"`
+	}
+	input.SoftwareName = softwareName
+
+	data, err := json.Marshal(input)
+	if err != nil {
+		return "", err
+	}
+
+	status, body, err := doRequest(http.MethodDelete, path, bytes.NewReader(data), "application/json")
 	if err != nil {
 		return "", err
 	}

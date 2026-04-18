@@ -10,13 +10,10 @@ import (
 	"github.com/wdvxdr1123/ZeroBot/message"
 )
 
-func handleDeleteSoftware(uid int64, nickname, softwareName string) (string, error) {
+func handleDeleteSoftware(uid int64, softwareName string) (string, error) {
 	msg, err := deleteSoftware(uid, softwareName)
 	if err != nil {
 		return "", err
-	}
-	if msg == "" {
-		return fmt.Sprintf("%s[%d] 删除匹配软件成功", nickname, uid), nil
 	}
 	return msg, nil
 }
