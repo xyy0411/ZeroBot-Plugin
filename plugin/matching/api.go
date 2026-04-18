@@ -130,6 +130,25 @@ func addSoftware(userID int64, software string, softwareType int8) (string, erro
 	return "", fmt.Errorf("添加匹配软件失败: status=%d, body=%s", status, strings.TrimSpace(string(body)))
 }
 
+func updateName(userID int64, userName string) (string, error) {
+	var input struct {
+		UserName string `json:"user_name"`
+	}
+	input.UserName = userName
+	data, err := json.Marshal(&input)
+	if err != nil {
+		return "", err
+	}
+	status, body, err := doRequest(http.MethodPatch, "/profile/"+strconv.FormatInt(userID, 10), bytes.NewReader(data), "application/json")
+	if err != nil {
+		return "", err
+	}
+	if status >= 200 && status < 300 {
+		return responseMessage(body), nil
+	}
+	return "", err
+}
+
 func deleteSoftware(userID int64, softwareName string) (string, error) {
 	path := fmt.Sprintf("/profile/%d/software", userID)
 

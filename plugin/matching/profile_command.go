@@ -10,12 +10,12 @@ import (
 	"github.com/wdvxdr1123/ZeroBot/message"
 )
 
+func handleUpdateProfile(userID int64, nickname string) (string, error) {
+	return updateName(userID, nickname)
+}
+
 func handleDeleteSoftware(uid int64, softwareName string) (string, error) {
-	msg, err := deleteSoftware(uid, softwareName)
-	if err != nil {
-		return "", err
-	}
-	return msg, nil
+	return deleteSoftware(uid, softwareName)
 }
 
 func handleDeleteBlockUser(uid int64, targetText string) (string, error) {

@@ -26,6 +26,11 @@ var (
 var regexpstring = `^(有无|有人|谁来)(联机|匹配|打架|对决|玩吗|to|qd|lh|uu|主机|副机|主副皆可|仅主|仅副)?$`
 
 func init() {
+	engine.OnFullMatch("更新个人信息", zero.OnlyPrivate).SetBlock(true).
+		Handle(func(ctx *zero.Ctx) {
+			msg, err := handleUpdateProfile(ctx.Event.UserID, ctx.CardOrNickName(ctx.Event.UserID))
+			sendTextResult(ctx, msg, err)
+		})
 	engine.OnFullMatch("退出被动匹配黑名单", getDB, zero.OnlyPrivate).SetBlock(true).
 		Handle(func(ctx *zero.Ctx) {
 			msg, err := handleRemoveRejectedMatchUser(ctx.Event.UserID)
@@ -50,7 +55,7 @@ func init() {
 	engine.OnRegex(`删除匹配软件\s*(.+)`, zero.OnlyPrivate, getDB).SetBlock(true).
 		Handle(func(ctx *zero.Ctx) {
 			softwareName := strings.ToLower(strings.TrimSpace(ctx.State["regex_matched"].([]string)[1]))
-			msg, err := handleDeleteSoftware(ctx.Event.UserID, ctx.CardOrNickName(ctx.Event.UserID), softwareName)
+			msg, err := handleDeleteSoftware(ctx.Event.UserID, softwareName)
 			sendTextResult(ctx, msg, err)
 		})
 
