@@ -210,7 +210,11 @@ func writeTempImages(pid int64, images [][]byte, urls []string) ([]string, error
 }
 
 func toFileImage(path string) message.Segment {
-	return message.Image("file:///" + strings.ReplaceAll(path, "\\", "/"))
+	normalized := strings.ReplaceAll(path, "\\", "/")
+	if strings.HasPrefix(normalized, "/") {
+		return message.Image("file://" + normalized)
+	}
+	return message.Image("file:///" + normalized)
 }
 
 func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
