@@ -1,7 +1,6 @@
 package pixiv
 
 import (
-	"fmt"
 	"math/rand"
 	"os"
 	"strconv"
@@ -222,7 +221,7 @@ func init() {
 		}
 
 		for _, illust := range illusts {
-			fmt.Println(illust.PID)
+			log.Print("获取到图片 PID: ", illust.PID)
 			_ = service.DB.Create(&illust).Error
 		}
 

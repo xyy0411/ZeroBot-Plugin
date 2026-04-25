@@ -2,14 +2,15 @@ package pixiv
 
 import (
 	"errors"
-	"fmt"
+	"log"
+	"net/http"
+	"sync"
+
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/api"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/cache"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
-	"net/http"
-	"sync"
 )
 
 var cacheFilling sync.Map
@@ -95,7 +96,7 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 				Ill: ill1,
 			}
 
-			if ill1.PageCount > 1 && len(illusts) == 1 {
+			if ill1.PageCount > 1 {
 
 				type pageResult struct {
 					index int
@@ -161,7 +162,7 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 				}
 			}
 
-			fmt.Println("下载图片完成：", ill1.PID)
+			log.Print("下载图片完成：", ill1.PID)
 			results <- d
 		}()
 
@@ -172,8 +173,7 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 		res := <-results
 
 		if res.Err != nil {
-			var httpErr *api.HTTPStatusError
-			if errors.As(res.Err, &httpErr) && httpErr.StatusCode == http.StatusNotFound {
+			if httpErr, ok := errors.AsType[*api.HTTPStatusError](res.Err); ok && httpErr.StatusCode == http.StatusNotFound {
 				if err := s.DB.DeleteIllustByPID(res.Ill.PID); err != nil {
 					ctx.SendChain(message.Text("清理已失效图片失败: ", err))
 				} else {
@@ -214,7 +214,7 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 
 func (s *Service) BackgroundCacheFiller(keyword string, minCache int, r18Req bool, fetchCount int, gid int64) {
 	if _, loaded := cacheFilling.LoadOrStore(keyword, struct{}{}); loaded {
-		fmt.Println("已有后台任务在补缓存:", keyword)
+		log.Print("已有后台任务在补缓存: ", keyword)
 		return
 	}
 
@@ -223,41 +223,40 @@ func (s *Service) BackgroundCacheFiller(keyword string, minCache int, r18Req boo
 
 		count, err := s.DB.CountIllustsSmart(gid, keyword, r18Req)
 		if err != nil {
-			fmt.Println("查询数据库发生错误:", err)
+			log.Print("查询数据库发生错误: ", err)
 			return
 		}
 
 		if count >= int64(minCache) {
-			fmt.Println("缓存足够，无需补充:", keyword)
+			log.Print("缓存足够，无需补充: ", keyword)
 			return
 		}
 
-		fmt.Printf("后台补充关键词 %s, 数量 %d\n", keyword, fetchCount)
+		log.Printf("后台补充关键词 %s, 数量 %d\n", keyword, fetchCount)
 
 		sendedcache, err := s.DB.GetSentPictureIDs(gid)
 		if err != nil {
-			fmt.Println("后台补充缓存失败:", err)
+			log.Print("后台补充缓存失败: ", err)
 			return
 		}
 		s1, err := s.DB.GetIllustIDsByKeyword(keyword)
 		sendedcache = append(sendedcache, s1...)
 		newIllusts, err := s.API.FetchPixivIllusts(keyword, r18Req, fetchCount, sendedcache)
 		if err != nil {
-			fmt.Println("后台补充缓存失败:", err)
-
+			log.Print("后台补充缓存失败: ", err)
 			return
 		}
 
 		if len(newIllusts) == 0 {
-			fmt.Println("后台补充缓存：没有新图")
+			log.Print("后台补充缓存：没有新图")
 			return
 		}
 
 		for _, illust := range newIllusts {
 			s.DB.Create(&illust)
-			fmt.Println("后台补充缓存：", illust.PID)
+			log.Print("后台补充缓存：", illust.PID)
 		}
 
-		fmt.Printf("后台成功补充 %d 张图片到关键词 %s 缓存\n", len(newIllusts), keyword)
+		log.Printf("后台成功补充 %d 张图片到关键词 %s 缓存\n", len(newIllusts), keyword)
 	}()
 }
