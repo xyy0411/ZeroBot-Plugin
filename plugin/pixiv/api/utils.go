@@ -140,7 +140,7 @@ func convertToIllustCache(raw model.IllustsEntity) (*model.IllustCache, error) {
 		Title:      raw.Title,
 		AuthorName: raw.User.Name,
 		ImageURL:   raw.ImageUrls.Large,
-		R18:        (raw.XRestrict == 1) || hasR18Tag(tagNames),
+		R18:        hasR18Tag(tagNames),
 		Bookmarks:  raw.TotalBookmarks,
 		TotalView:  raw.TotalView,
 		CreateDate: raw.CreateDate,
