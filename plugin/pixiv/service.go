@@ -2,12 +2,20 @@ package pixiv
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"net/url"
+	"os"
+	"path"
+	"path/filepath"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/api"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/cache"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
+	"github.com/FloatTech/floatbox/file"
 	log "github.com/sirupsen/logrus"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
@@ -31,6 +39,8 @@ type Service struct {
 type taskState struct {
 	Running bool
 }
+
+const pixivTempDir = "data/pixiv/temp"
 
 func NewService(db *cache.DB, api *api.PixivAPI) *Service {
 	return &Service{
@@ -67,6 +77,90 @@ func (s *Service) Release(userID int64) {
 		t.Running = false
 	}
 	delete(s.tasks, userID)
+}
+
+func removeTempImages(paths []string) {
+	for _, p := range paths {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			log.Warnf("删除 pixiv 临时文件失败: %s: %v", p, err)
+		}
+	}
+}
+
+func scheduleCleanupPixivImages(paths []string, delay time.Duration) {
+	if len(paths) == 0 {
+		return
+	}
+	local := append([]string(nil), paths...)
+	go func() {
+		time.Sleep(delay)
+		removeTempImages(local)
+	}()
+}
+
+func pixivImageExt(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ".jpg"
+	}
+	ext := path.Ext(parsed.Path)
+	if ext == "" {
+		return ".jpg"
+	}
+	return ext
+}
+
+func createPixivTempImagePath(pid int64, index int, rawURL string) (string, error) {
+	baseDir := filepath.Join(file.BOTPATH, pixivTempDir)
+	if err := os.MkdirAll(baseDir, 0o775); err != nil {
+		return "", err
+	}
+	pattern := fmt.Sprintf("%d-", pid)
+	if index > 0 {
+		pattern = fmt.Sprintf("%d-%d-", pid, index)
+	}
+	tmp, err := os.CreateTemp(baseDir, pattern+"*"+pixivImageExt(rawURL))
+	if err != nil {
+		return "", err
+	}
+	name := tmp.Name()
+	if err = tmp.Close(); err != nil {
+		return "", err
+	}
+	return name, nil
+}
+
+func writeTempImages(pid int64, images [][]byte, urls []string) ([]string, error) {
+	paths := make([]string, 0, len(images))
+	cleanup := func() {
+		removeTempImages(paths)
+	}
+
+	for i, img := range images {
+		if len(img) == 0 {
+			continue
+		}
+		rawURL := ""
+		if i < len(urls) {
+			rawURL = urls[i]
+		}
+		imagePath, err := createPixivTempImagePath(pid, i+1, rawURL)
+		if err != nil {
+			cleanup()
+			return nil, err
+		}
+		if err = os.WriteFile(imagePath, img, 0o644); err != nil {
+			cleanup()
+			return nil, err
+		}
+		paths = append(paths, imagePath)
+	}
+
+	return paths, nil
+}
+
+func toFileImage(path string) message.Segment {
+	return message.Image("file:///" + strings.ReplaceAll(path, "\\", "/"))
 }
 
 func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
@@ -196,14 +290,27 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 			"\n浏览数:", res.Ill.TotalView,
 			"\n发布时间:", res.Ill.CreateDate,
 		))
-		for i := 0; i < len(res.Images); i++ {
-			if len(res.Images[i]) == 0 {
+
+		imageURLs := make([]string, len(res.Images))
+		for i := range imageURLs {
+			if i == 0 {
+				imageURLs[i] = res.Ill.OriginalURL
 				continue
 			}
-			msg = append(msg, message.ImageBytes(res.Images[i]))
+			imageURLs[i] = api.ModifyPageGeneric(res.Ill.OriginalURL, i)
+		}
+
+		tempPaths, err := writeTempImages(res.Ill.PID, res.Images, imageURLs)
+		if err != nil {
+			ctx.SendChain(message.Text("暂存图片失败: ", err))
+			continue
+		}
+		for _, tpath := range tempPaths {
+			msg = append(msg, toFileImage(tpath))
 		}
 
 		ctx.Send(msg)
+		scheduleCleanupPixivImages(tempPaths, 15*time.Second)
 
 		s.DB.Create(&model.SentImage{
 			GroupID: gid,

@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
+	log "github.com/sirupsen/logrus"
 )
 
 type PixivAPI struct {
@@ -43,11 +44,6 @@ func (p *PixivAPI) FetchPixivByUser(uid int64, limit int, pids []int64) ([]model
 
 	excludeCache := make(map[int64]struct{})
 
-	/*	var pids []int64
-		err := db.Model(&model.SentImage{}).Where("group_id = ?", gid).Pluck("pid", &pids).Error
-		if err != nil {
-			return nil, err
-		}*/
 	for _, pid := range pids {
 		excludeCache[pid] = struct{}{}
 	}
@@ -60,14 +56,6 @@ func (p *PixivAPI) FetchPixivRecommend(limit int) ([]model.IllustCache, error) {
 }
 
 func (p *PixivAPI) FetchPixivIllusts(keyword string, isR18Req bool, limit int, cachedIds []int64) ([]model.IllustCache, error) {
-	/*	// 只取当前 keyword 的缓存
-		var cachedIds []int64
-		if err := db.Model(&IllustCache{}).
-			Where("keyword = ?", keyword).
-			Pluck("pid", &cachedIds).Error; err != nil {
-			return nil, err
-		}*/
-
 	cachedMap := make(map[int64]struct{}, len(cachedIds))
 	if len(cachedIds) > 0 {
 		for _, id := range cachedIds {
@@ -100,7 +88,7 @@ func (p *PixivAPI) GetIllustsByKeyword(keyword string, limit int, cachedIllust [
 		needed = limit - len(cachedIllust)
 	}
 
-	fmt.Printf("从数据库读到%d,还需要下载%d\n", len(cachedIllust), needed)
+	log.Printf("从数据库读到%d,还需要下载%d\n", len(cachedIllust), needed)
 	// 缓存没数据 -> 调用Pixiv API拉取
 	pixivResults, err := p.FetchPixivIllusts(keyword, r18Req, needed, cached)
 	if err != nil && len(cachedIllust) == 0 {
@@ -113,7 +101,7 @@ func (p *PixivAPI) GetIllustsByKeyword(keyword string, limit int, cachedIllust [
 	}
 
 	if len(cachedIllust) > 0 && len(pixivResults) == 0 {
-		fmt.Println("http没有找到图片")
+		log.Println("http没有找到图片")
 		return cachedIllust, nil
 	}
 
@@ -123,7 +111,7 @@ func (p *PixivAPI) GetIllustsByKeyword(keyword string, limit int, cachedIllust [
 		pixivResults = pixivResults[:limit]
 	}
 
-	fmt.Println("预计发送", len(pixivResults), "张图片")
+	log.Println("预计发送", len(pixivResults), "张图片")
 
 	return pixivResults, nil
 }
