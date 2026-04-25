@@ -4,10 +4,11 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
 )
 
 // HTTPStatusError 捕获图片下载时的 HTTP 状态码

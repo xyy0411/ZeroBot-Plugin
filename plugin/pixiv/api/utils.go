@@ -3,9 +3,10 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
 	"net/url"
 	"strings"
+
+	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
 )
 
 func replaceDomain(originalURL, newDomain string) (string, error) {

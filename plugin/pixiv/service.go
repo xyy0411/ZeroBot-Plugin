@@ -2,13 +2,13 @@ package pixiv
 
 import (
 	"errors"
-	"log"
 	"net/http"
 	"sync"
 
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/api"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/cache"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
+	log "github.com/sirupsen/logrus"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
 )

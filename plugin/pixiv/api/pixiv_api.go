@@ -2,8 +2,9 @@ package api
 
 import (
 	"fmt"
-	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
 	"sort"
+
+	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
 )
 
 type PixivAPI struct {
