@@ -74,7 +74,6 @@ import (
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/gif"           // 制图
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/matching"          // bvn匹配
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/mcfish"   // 钓鱼模拟器
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/music"    // 点歌
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/niuniu"   // 牛牛大作战
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv"    // pixiv
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/qqwife"   // 一群一天一夫一妻制群老婆

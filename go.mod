@@ -23,7 +23,6 @@ require (
 	github.com/fumiama/terasu v1.0.2
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0
 	github.com/gorilla/websocket v1.5.3
-	github.com/guohuiyuan/music-lib v1.0.2-0.20260121020416-53f6cb24629d
 	github.com/jinzhu/gorm v1.9.16
 	github.com/jozsefsallai/gophersauce v1.0.1
 	github.com/kanrichan/resvg-go v0.0.2-0.20231001163256-63db194ca9f5
@@ -41,7 +40,7 @@ require (
 )
 
 require (
-	filippo.io/edwards25519 v1.1.0 // indirect
+	filippo.io/edwards25519 v1.1.1 // indirect
 	github.com/RomiChan/websocket v1.4.3-0.20251002072000-d3eb41798438 // indirect
 	github.com/ajstarks/svgo v0.0.0-20200320125537-f189e35d30ca // indirect
 	github.com/antchfx/htmlquery v1.3.5 // indirect
