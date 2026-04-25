@@ -42,6 +42,11 @@ type taskState struct {
 
 const pixivTempDir = "data/pixiv/temp"
 
+const (
+	pixivTempFileTTL      = 24 * time.Hour
+	pixivTempCleanupEvery = time.Hour
+)
+
 func NewService(db *cache.DB, api *api.PixivAPI) *Service {
 	return &Service{
 		DB:              db,
@@ -87,14 +92,59 @@ func removeTempImages(paths []string) {
 	}
 }
 
-func scheduleCleanupPixivImages(paths []string, delay time.Duration) {
-	if len(paths) == 0 {
-		return
+func cleanupExpiredPixivTempFiles(now time.Time, ttl time.Duration) (removed, failed int) {
+	baseDir := filepath.Join(file.BOTPATH, pixivTempDir)
+	entries, err := os.ReadDir(baseDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, 0
+		}
+		log.Warnf("读取 pixiv 临时目录失败: %s: %v", baseDir, err)
+		return 0, 1
 	}
-	local := append([]string(nil), paths...)
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			failed++
+			log.Warnf("读取 pixiv 临时文件信息失败: %s: %v", entry.Name(), err)
+			continue
+		}
+		if now.Sub(info.ModTime()) < ttl {
+			continue
+		}
+
+		fullPath := filepath.Join(baseDir, entry.Name())
+		if err = os.Remove(fullPath); err != nil {
+			if !os.IsNotExist(err) {
+				failed++
+				log.Warnf("删除过期 pixiv 临时文件失败: %s: %v", fullPath, err)
+			}
+			continue
+		}
+		removed++
+	}
+
+	return removed, failed
+}
+
+func startPixivTempFileCleaner() {
+	removed, failed := cleanupExpiredPixivTempFiles(time.Now(), pixivTempFileTTL)
+	log.Printf("pixiv 临时文件启动清理完成: removed=%d failed=%d", removed, failed)
+
 	go func() {
-		time.Sleep(delay)
-		removeTempImages(local)
+		ticker := time.NewTicker(pixivTempCleanupEvery)
+		defer ticker.Stop()
+		for range ticker.C {
+			removed, failed := cleanupExpiredPixivTempFiles(time.Now(), pixivTempFileTTL)
+			if removed == 0 && failed == 0 {
+				continue
+			}
+			log.Printf("pixiv 临时文件定时清理完成: removed=%d failed=%d", removed, failed)
+		}
 	}()
 }
 
@@ -310,7 +360,6 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 		}
 
 		ctx.Send(msg)
-		scheduleCleanupPixivImages(tempPaths, 15*time.Second)
 
 		s.DB.Create(&model.SentImage{
 			GroupID: gid,

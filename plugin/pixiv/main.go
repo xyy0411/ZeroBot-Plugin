@@ -29,6 +29,12 @@ func init() {
 			panic(err)
 		}
 	}
+	if file.IsNotExist(pixivTempDir) {
+		err := os.MkdirAll(pixivTempDir, 0775)
+		if err != nil {
+			panic(err)
+		}
+	}
 
 	db := cache.NewDB("data/pixiv/pixiv.db")
 
@@ -39,6 +45,7 @@ func init() {
 
 	pixivAPI := api.NewPixivAPI(t1.Token)
 	service = NewService(db, pixivAPI)
+	startPixivTempFileCleaner()
 }
 
 const (
