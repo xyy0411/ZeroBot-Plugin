@@ -2,6 +2,10 @@ package pixiv
 
 import (
 	"fmt"
+	"math/rand"
+	"os"
+	"strconv"
+
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/api"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/cache"
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
@@ -11,12 +15,9 @@ import (
 	log "github.com/sirupsen/logrus"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
-	"math/rand"
-	"os"
-	"strconv"
 )
 
-var defaultKeyword = []string{"萝莉", "御姐", "妹妹", "姐姐"}
+var defaultKeyword = []string{"萝莉", "御姐", "妹妹", "姐姐", "车万"}
 
 var (
 	service *Service
@@ -47,7 +48,7 @@ const (
 	- 每日涩图
 	- [x张]画师[画师的uid]
 	- p站搜图[插画pid]
-	[]为可忽略项([]不用打出来这只是一个占位符)
+	[]不用打出来这只是一个占位符
 	可添加多个关键词每个关键词用空格隔开
 	默认不发R-18如果要发就加一个R-18关键词
 `
@@ -147,11 +148,6 @@ func init() {
 	})
 
 	engine.OnRegex(`^每日[色|涩|瑟]图$`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
-		/*		if !service.Acquire(ctx.Event.UserID) {
-					ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text("上一个任务还没结束，请稍后再试"))
-					return
-				}
-				defer service.Release(ctx.Event.UserID)*/
 
 		illusts, err := service.API.FetchPixivRecommend(1)
 		if err != nil {
@@ -194,7 +190,7 @@ func init() {
 		r18Req := api.IsR18(keyword)
 		cleanKeyword := api.RemoveR18Keywords(keyword)
 
-		if r18Req && !service.DB.CheckGroupR18Permission(gid) && gid !=0 {
+		if r18Req && !service.DB.CheckGroupR18Permission(gid) && gid != 0 {
 			ctx.SendChain(message.Text([]string{
 				"笨蛋笨蛋大笨蛋",
 				"这里不太好吧，去私聊看看吧!",
