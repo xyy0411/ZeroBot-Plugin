@@ -45,7 +45,6 @@ func init() {
 
 	pixivAPI := api.NewPixivAPI(t1.Token)
 	service = NewService(db, pixivAPI)
-	startPixivTempFileCleaner()
 }
 
 const (
