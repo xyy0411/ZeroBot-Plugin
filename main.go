@@ -14,8 +14,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/FloatTech/ZeroBot-Plugin/abineundo" // 设置插件优先级
-	_ "github.com/FloatTech/ZeroBot-Plugin/console"   // 更改控制台属性
+	_ "github.com/FloatTech/ZeroBot-Plugin/abineundo" // 设置插件优先级&更改控制台属性
 	"github.com/FloatTech/ZeroBot-Plugin/kanban"      // 打印 banner
 
 	// ---------以下插件均可通过前面加 // 注释，注释后停用并不加载插件--------- //
@@ -109,6 +108,8 @@ import (
 	//                          vvvvvvvvvvvvvv                          //
 	//                               vvvv                               //
 
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/aichatcfg" // AI聊天配置
+
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/aichat" // AI聊天
 
 	//                               ^^^^                               //
@@ -137,9 +138,10 @@ import (
 )
 
 type zbpcfg struct {
-	Z zero.Config        `json:"zero"`
-	W []*driver.WSClient `json:"ws"`
-	S []*driver.WSServer `json:"wss"`
+	Z               zero.Config        `json:"zero"`
+	W               []*driver.WSClient `json:"ws"`
+	S               []*driver.WSServer `json:"wss"`
+	ForceBase64File bool               `json:"force_base64_file"`
 }
 
 var config zbpcfg
@@ -164,6 +166,7 @@ func init() {
 	rsz := flag.Uint("r", 4096, "Receiving buffer ring size.")
 	maxpt := flag.Uint("x", 4, "Max process time (min).")
 	markmsg := flag.Bool("m", false, "Don't mark message as read automatically")
+	fb64 := flag.Bool("fb64", false, "Force to send base64 file.")
 	flag.BoolVar(&file.SkipOriginal, "mirror", false, "Use mirrored lazy data at first")
 
 	flag.Parse()
@@ -227,6 +230,7 @@ func init() {
 		MarkMessage:    !*markmsg,
 		Driver:         []zero.Driver{config.W[0]},
 	}
+	config.ForceBase64File = *fb64
 
 	if *save != "" {
 		f, err := os.Create(*save)
@@ -247,6 +251,7 @@ func main() {
 	if !strings.Contains(runtime.Version(), "go1.2") { // go1.20之前版本需要全局 seed，其他插件无需再 seed
 		rand.Seed(time.Now().UnixNano()) //nolint: staticcheck
 	}
+	message.SetForceBase64File(config.ForceBase64File)
 	// 帮助
 	zero.OnFullMatchGroup([]string{"help", "/help", ".help", "菜单"}, zero.OnlyToMe).SetBlock(true).
 		Handle(func(ctx *zero.Ctx) {

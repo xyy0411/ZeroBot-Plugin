@@ -4,19 +4,18 @@ package wife
 import (
 	"bytes"
 	"image"
-	"image/color"
 	"math/rand"
 	"strings"
 	"time"
 
+	"github.com/FloatTech/gg/factory"
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
 	"github.com/FloatTech/zbputils/ctxext"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
 
-	zbmath "github.com/FloatTech/floatbox/math"
-	"github.com/FloatTech/imgfactory"
+	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -35,22 +34,26 @@ func init() {
 		card := cards[rand.Intn(len(cards))]
 		pic, err := engine.GetLazyData("wives/"+card, true)
 		if err != nil {
-			ctx.SendChain(message.Text("[猜老婆]error:\n", err))
-			return
+			logrus.Warnf("[wife] 猜老婆图片同步失败: %v，尝试读取本地文件...", err)
+			pic, err = engine.GetLazyData("wives/"+card, false)
+			if err != nil {
+				ctx.SendChain(message.Text("[猜老婆] 远程下载及本地读取图片均失败:\n", err))
+				return
+			}
 		}
 		work, name := card2name(card)
 		name = strings.ToLower(name)
 		img, _, err := image.Decode(bytes.NewReader(pic))
 		if err != nil {
-			ctx.SendChain(message.Text("[猜老婆]error:\n", err))
+			ctx.SendChain(message.Text("[猜老婆] 图片解码失败:\n", err))
 			return
 		}
-		dst := imgfactory.Size(img, img.Bounds().Dx(), img.Bounds().Dy())
+		dst := factory.Size(img, img.Bounds().Dx(), img.Bounds().Dy())
 		q, err := mosaic(dst, class)
 		if err != nil {
 			ctx.SendChain(
 				message.Reply(ctx.Event.MessageID),
-				message.Text("[猜老婆]图片生成失败:\n", err),
+				message.Text("[猜老婆] 图片生成失败:\n", err),
 			)
 			return
 		}
@@ -82,8 +85,6 @@ func init() {
 				)
 				return
 			case c := <-recv:
-				// tick.Reset(105 * time.Second)
-				// after.Reset(120 * time.Second)
 				msg := strings.ReplaceAll(c.Event.Message.String(), "酱", "")
 				if msg == "" {
 					continue
@@ -134,24 +135,8 @@ func init() {
 	})
 }
 
-// 马赛克生成
-func mosaic(dst *imgfactory.Factory, level int) ([]byte, error) {
-	b := dst.Image().Bounds()
-	p := imgfactory.NewFactoryBG(dst.W(), dst.H(), color.NRGBA{255, 255, 255, 255})
-	markSize := zbmath.Max(b.Max.X, b.Max.Y) * sizeList[level] / 200
-
-	for yOfMarknum := 0; yOfMarknum <= zbmath.Ceil(b.Max.Y, markSize); yOfMarknum++ {
-		for xOfMarknum := 0; xOfMarknum <= zbmath.Ceil(b.Max.X, markSize); xOfMarknum++ {
-			a := dst.Image().At(xOfMarknum*markSize+markSize/2, yOfMarknum*markSize+markSize/2)
-			cc := color.NRGBAModel.Convert(a).(color.NRGBA)
-			for y := 0; y < markSize; y++ {
-				for x := 0; x < markSize; x++ {
-					xOfPic := xOfMarknum*markSize + x
-					yOfPic := yOfMarknum*markSize + y
-					p.Image().Set(xOfPic, yOfPic, cc)
-				}
-			}
-		}
-	}
-	return imgfactory.ToBytes(p.Blur(3).Image())
+// 高斯模糊生成
+func mosaic(dst *factory.Factory, level int) ([]byte, error) {
+	blurRadius := float64(sizeList[level] * 3)
+	return factory.ToBytes(dst.Blur(blurRadius).Image())
 }

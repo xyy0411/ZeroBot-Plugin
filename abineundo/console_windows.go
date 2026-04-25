@@ -1,5 +1,4 @@
-// Package console sets console's behavior on init
-package console
+package abineundo
 
 import (
 	"bytes"
@@ -72,6 +71,11 @@ func init() {
 	stdout := windows.Handle(os.Stdout.Fd())
 	err = windows.GetConsoleMode(stdout, &mode)
 	if err != nil {
+		if debugMode {
+			logrus.Warnf("调试模式下忽略控制台模式获取失败: %v", err)
+			logrus.SetFormatter(&logFormat{hasColor: false})
+			return
+		}
 		panic(err)
 	}
 
