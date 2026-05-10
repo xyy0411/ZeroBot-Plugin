@@ -65,6 +65,7 @@ import (
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/bilibili"      // b站相关
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/bilibiliparse" // b站相关
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/bilibilipush"  // b站相关
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/chatgpt"       // chatgpt
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/chess"         // 国际象棋
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/dailynews"     // 今日早报
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/danbooru"      // DeepDanbooru二次元图标签识别
