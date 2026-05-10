@@ -90,12 +90,6 @@ func init() {
 	})
 
 	engine.OnRegex(`^p站搜图(\d+)`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
-		if !service.Acquire(ctx.Event.UserID) {
-			ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text("上一个任务还没结束，请稍后再试"))
-			return
-		}
-		defer service.Release(ctx.Event.UserID)
-
 		rawPID := ctx.State["regex_matched"].([]string)[1]
 		pid, err := strconv.ParseInt(rawPID, 10, 64)
 		if err != nil {
