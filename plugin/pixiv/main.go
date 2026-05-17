@@ -67,6 +67,14 @@ func init() {
 		Help:             help,
 	})
 
+	engine.OnRegex(`^授权(/d+)使用p站18`, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+		if err := service.DB.Create(&model.GroupR18Permission{GroupID: ctx.Event.GroupID}).Error; err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+		ctx.SendChain(message.Text("已允许"))
+	})
+
 	engine.OnRegex(`^允许该群使用p站r18$`, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		if err := service.DB.Create(&model.GroupR18Permission{GroupID: ctx.Event.GroupID}).Error; err != nil {
 			ctx.SendChain(message.Text("ERROR: ", err))
@@ -184,10 +192,13 @@ func init() {
 			ctx.SendChain(message.Text("图片太多了"))
 			return
 		}
-
 		gid := ctx.Event.GroupID
 		r18Req := api.IsR18(keyword)
 		cleanKeyword := api.RemoveR18Keywords(keyword)
+
+		if gid == 0 {
+			gid = -ctx.Event.UserID
+		}
 
 		if r18Req && !service.DB.CheckGroupR18Permission(gid) && !zero.SuperUserPermission(ctx) {
 			ctx.SendChain(message.Text([]string{
@@ -195,10 +206,6 @@ func init() {
 				"此处未授权r18",
 			}[rand.Intn(2)]))
 			return
-		}
-
-		if gid == 0 {
-			gid = -ctx.Event.UserID
 		}
 
 		cachedIllusts, err := service.DB.FindIllustsSmart(gid, cleanKeyword, limitInt, r18Req)
