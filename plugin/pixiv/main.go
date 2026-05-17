@@ -189,10 +189,10 @@ func init() {
 		r18Req := api.IsR18(keyword)
 		cleanKeyword := api.RemoveR18Keywords(keyword)
 
-		if r18Req && !service.DB.CheckGroupR18Permission(gid) && gid != 0 {
+		if r18Req && !service.DB.CheckGroupR18Permission(gid) && !zero.SuperUserPermission(ctx) {
 			ctx.SendChain(message.Text([]string{
 				"笨蛋笨蛋大笨蛋",
-				"这里不太好吧，去私聊看看吧!",
+				"此处未授权r18",
 			}[rand.Intn(2)]))
 			return
 		}
