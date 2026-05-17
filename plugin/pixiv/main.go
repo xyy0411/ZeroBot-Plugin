@@ -200,7 +200,7 @@ func init() {
 			gid = -ctx.Event.UserID
 		}
 
-		if r18Req && !service.DB.CheckGroupR18Permission(gid) && !zero.SuperUserPermission(ctx) {
+		if r18Req && !service.DB.CheckGroupR18Permission(gid) {
 			ctx.SendChain(message.Text([]string{
 				"笨蛋笨蛋大笨蛋",
 				"此处未授权r18",
