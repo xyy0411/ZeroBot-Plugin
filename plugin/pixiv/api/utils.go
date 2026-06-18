@@ -74,6 +74,14 @@ func hasR18Tag(tags []string) bool {
 	return false
 }
 
+func extractTagNames(tags []model.TagsEntity) []string {
+	tagNames := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		tagNames = append(tagNames, tag.Name)
+	}
+	return tagNames
+}
+
 func IsR18(s string) bool {
 	if s == "" {
 		return false
@@ -122,15 +130,16 @@ func ModifyPageGeneric(originalURL string, pageNum int) string {
 	return u.String()
 }
 
-func convertToIllustCache(raw model.IllustsEntity) (*model.IllustCache, error) {
-	var tagNames []string
-	for _, tag := range raw.Tags {
-		tagNames = append(tagNames, tag.Name)
-	}
+func convertToIllustCache(raw *model.IllustsEntity) (*model.IllustCache, error) {
+	tagNames := extractTagNames(raw.Tags)
 
 	jsonTags, err := json.Marshal(tagNames)
 	if err != nil {
 		return nil, err
+	}
+
+	if len(tagNames) == 0 {
+		tagNames = []string{""}
 	}
 
 	illust := &model.IllustCache{

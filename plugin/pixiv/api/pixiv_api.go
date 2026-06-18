@@ -34,9 +34,7 @@ func (p *PixivAPI) FetchPixivByPID(pid int64) (*model.IllustCache, error) {
 	if rawData == nil || rawData.Illust == nil {
 		return nil, fmt.Errorf("pixiv 返回数据为空或结构不匹配")
 	}
-	illust := *rawData.Illust
-
-	return convertToIllustCache(illust)
+	return convertToIllustCache(rawData.Illust)
 }
 
 func (p *PixivAPI) FetchPixivByUser(uid int64, limit int, pids []int64) ([]model.IllustCache, error) {
@@ -143,7 +141,8 @@ func (p *PixivAPI) fetchPixivCommon(
 			return nil, err
 		}
 
-		for _, raw := range rawData.Illusts {
+		for i := range rawData.Illusts {
+			raw := &rawData.Illusts[i]
 
 			// 去重
 			if _, ok := seen[raw.Id]; ok {
@@ -156,10 +155,7 @@ func (p *PixivAPI) fetchPixivCommon(
 			}
 			seen[raw.Id] = struct{}{}
 
-			tagNames := make([]string, 0, len(raw.Tags))
-			for _, tag := range raw.Tags {
-				tagNames = append(tagNames, tag.Name)
-			}
+			tagNames := extractTagNames(raw.Tags)
 
 			if isR18Req != nil && *isR18Req && !hasR18Tag(tagNames) {
 				continue
