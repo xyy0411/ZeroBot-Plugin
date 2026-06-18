@@ -2,11 +2,12 @@ package cache
 
 import (
 	"errors"
-	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
-	"github.com/jinzhu/gorm"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
+	"github.com/jinzhu/gorm"
 )
 
 type DB struct {
@@ -19,7 +20,7 @@ func NewDB(path string) *DB {
 	if err != nil {
 		panic(err)
 	}
-	if err = db.AutoMigrate(&model.IllustCache{}, &model.SentImage{}, &model.RefreshToken{}, &model.GroupR18Permission{}).Error; err != nil {
+	if err = db.AutoMigrate(&model.IllustCache{}, &model.SentImage{}, &model.RefreshToken{}, &model.GroupR18Permission{}, &model.PixivProxyConfig{}).Error; err != nil {
 		panic(err)
 	}
 	sqlDB := db.DB()
@@ -39,7 +40,7 @@ func (db *DB) CheckGroupR18Permission(gid int64) bool {
 	return count > 0
 }
 
-func (db *DB) FindByKeyword(gid int64, keyword string, limit int, r18Req bool) ([]model.IllustCache, error) {
+func (db *DB) findByKeyword(gid int64, keyword string, limit int, r18Req bool) ([]model.IllustCache, error) {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 
@@ -59,7 +60,7 @@ func (db *DB) FindByKeyword(gid int64, keyword string, limit int, r18Req bool) (
 	return results, nil
 }
 
-func (db *DB) FindByTag(gid int64, tag string, needed int, r18Req bool) ([]model.IllustCache, error) {
+func (db *DB) findByTag(gid int64, tag string, needed int, r18Req bool) ([]model.IllustCache, error) {
 	if needed <= 0 {
 		return nil, nil
 	}
@@ -112,7 +113,7 @@ func (db *DB) FindIllustsSmart(gid int64, keyword string, limit int, r18Req bool
 	var results []model.IllustCache
 
 	// 1. keyword 严格查询
-	kwRes, err := db.FindByKeyword(gid, keyword, limit, r18Req)
+	kwRes, err := db.findByKeyword(gid, keyword, limit, r18Req)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +122,6 @@ func (db *DB) FindIllustsSmart(gid int64, keyword string, limit int, r18Req bool
 		seen[ill.PID] = struct{}{}
 	}
 
-	// 已经满足 limit
 	if len(results) >= limit {
 		return results[:limit], nil
 	}
@@ -129,7 +129,7 @@ func (db *DB) FindIllustsSmart(gid int64, keyword string, limit int, r18Req bool
 	// 2. tag 查询补齐
 	need := limit - len(results)
 	for _, tagKeyword := range strings.Fields(keyword) {
-		tagRes, err := db.FindByTag(gid, tagKeyword, need, r18Req)
+		tagRes, err := db.findByTag(gid, tagKeyword, need, r18Req)
 		if err != nil {
 			return nil, err
 		}

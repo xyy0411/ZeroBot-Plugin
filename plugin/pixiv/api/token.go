@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type TokenStore struct {
@@ -33,7 +35,7 @@ func (t *TokenStore) GetAccessToken() (string, error) {
 	defer t.mu.Unlock()
 
 	if time.Now().Before(t.ExpiresAt) && t.AccessToken != "" {
-		fmt.Println("access_token is valid")
+		log.Println("access_token is valid")
 		return t.AccessToken, nil
 	}
 

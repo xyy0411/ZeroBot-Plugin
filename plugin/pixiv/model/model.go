@@ -46,6 +46,14 @@ type RefreshToken struct {
 	Token string
 }
 
+// PixivProxyConfig 保存 Pixiv API 客户端的代理配置
+type PixivProxyConfig struct {
+	gorm.Model
+
+	Name  string `gorm:"unique_index"`
+	Proxy string
+}
+
 type RootEntity struct {
 	Illusts         []IllustsEntity `json:"illusts"`
 	Illust          *IllustsEntity  `json:"illust"`

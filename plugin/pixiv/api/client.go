@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
 )
 
-// HTTPStatusError 捕获图片下载时的 HTTP 状态码
+// HTTPStatusError 图片下载时的 HTTP 状态码
 type HTTPStatusError struct {
 	StatusCode int
 	URL        string
@@ -24,21 +26,46 @@ func (e *HTTPStatusError) Error() string {
 // Client 封装 HTTP 客户端与 Pixiv 请求逻辑
 type Client struct {
 	*http.Client
+	transport *http.Transport
 }
 
 func NewClient() *Client {
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{MaxVersion: tls.VersionTLS13},
+		Proxy:           http.ProxyFromEnvironment,
+	}
 	return &Client{
-		&http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{MaxVersion: tls.VersionTLS13},
-			},
-			Timeout: time.Minute,
+		Client: &http.Client{
+			Transport: transport,
+			Timeout:   time.Minute,
 		},
+		transport: transport,
 	}
 }
 
+// SetProxy 设置代理
+func (c *Client) SetProxy(proxyURL string) error {
+	if c == nil || c.transport == nil {
+		return fmt.Errorf("pixiv client is nil")
+	}
+	proxyURL = strings.TrimSpace(proxyURL)
+	if proxyURL == "" {
+		c.transport.Proxy = http.ProxyFromEnvironment
+		return nil
+	}
+	u, err := url.Parse(proxyURL)
+	if err != nil {
+		return err
+	}
+	c.transport.Proxy = http.ProxyURL(u)
+	return nil
+}
+
 func (c *Client) SearchPixivIllustrations(accessToken, url string) (*model.RootEntity, error) {
-	req, _ := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 
 	req.Header.Set("User-Agent", "PixivAndroidApp/5.0.234 (Android 11; Pixel 5)")

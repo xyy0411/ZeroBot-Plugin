@@ -44,46 +44,53 @@ func init() {
 	}
 
 	pixivAPI := api.NewPixivAPI(t1.Token)
+
+	var proxyCfg model.PixivProxyConfig
+	proxyCfg.Name = "global"
+	if err := db.Where("name = ?", proxyCfg.Name).FirstOrCreate(&proxyCfg).Error; err == nil {
+		if err := pixivAPI.Client.SetProxy(proxyCfg.Proxy); err != nil {
+			log.Warning("设置pixiv代理错误: ", err)
+		}
+	}
+
 	service = NewService(db, pixivAPI)
 }
 
-const (
-	help = `
-	- [x张]涩图 [关键词]
-	- 每日涩图
-	- [x张]画师[画师的uid]
-	- p站搜图[插画pid]
-	[]不用打出来这只是一个占位符
-	可添加多个关键词每个关键词用空格隔开
-	默认不发R-18如果要发就加一个R-18关键词
+const help = `
+- [x张]涩图 [关键词]
+- 每日涩图
+- [x张]画师[画师的uid]
+- p站搜图[插画pid]
+- 设置p站token [token]
+- 授权此处使用p站18
+- 设置pixiv代理 [http://127.0.0.1:7890]
+- 查看pixiv代理
+- 清除pixiv代理
+[]不用打出来这只是一个占位符
+可添加多个关键词每个关键词用空格隔开
+默认不发R-18如果要发就加一个R-18关键词
 `
-)
 
 func init() {
-
 	engine := control.AutoRegister(&ctrl.Options[*zero.Ctx]{
 		DisableOnDefault: false,
 		Brief:            "Pixiv 图片搜索",
 		Help:             help,
 	})
 
-	engine.OnRegex(`^授权(/d+)使用p站18`, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
-		if err := service.DB.Create(&model.GroupR18Permission{GroupID: ctx.Event.GroupID}).Error; err != nil {
+	engine.OnFullMatch("授权此处使用p站18", zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+		id := ctx.Event.GroupID
+		if id == 0 {
+			id = -ctx.Event.UserID
+		}
+		if err := service.DB.Create(&model.GroupR18Permission{GroupID: id}).Error; err != nil {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
 		}
 		ctx.SendChain(message.Text("已允许"))
 	})
 
-	engine.OnRegex(`^允许该群使用p站r18$`, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
-		if err := service.DB.Create(&model.GroupR18Permission{GroupID: ctx.Event.GroupID}).Error; err != nil {
-			ctx.SendChain(message.Text("ERROR: ", err))
-			return
-		}
-		ctx.SendChain(message.Text("已允许该群使用p站r18"))
-	})
-
-	engine.OnRegex(`^设置p站token (.*)`, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+	engine.OnRegex(`^设置p站token\s+(.*)`, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		token := ctx.State["regex_matched"].([]string)[1]
 		var refreshToken model.RefreshToken
 		refreshToken.User = ctx.Event.UserID
@@ -95,6 +102,61 @@ func init() {
 		service.API.Token.RefreshToken = token
 
 		ctx.SendChain(message.Text("Pixiv Token: ", token))
+	})
+
+	engine.OnRegex(`^设置pixiv代理\s+([\s\S]+)$`, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+		proxy := ctx.State["regex_matched"].([]string)[1]
+
+		var proxyCfg model.PixivProxyConfig
+		proxyCfg.Name = "global"
+		if err := service.DB.Where("name = ?", proxyCfg.Name).FirstOrCreate(&proxyCfg).Error; err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+		proxyCfg.Proxy = proxy
+		if err := service.DB.Save(&proxyCfg).Error; err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+		if err := service.API.Client.SetProxy(proxy); err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+
+		ctx.SendChain(message.Text("Pixiv client proxy 已设置为: ", proxy))
+	})
+
+	engine.OnFullMatch("清除pixiv代理", zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+		var proxyCfg model.PixivProxyConfig
+		proxyCfg.Name = "global"
+		if err := service.DB.Where("name = ?", proxyCfg.Name).FirstOrCreate(&proxyCfg).Error; err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+		proxyCfg.Proxy = ""
+		if err := service.DB.Save(&proxyCfg).Error; err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+		if err := service.API.Client.SetProxy(""); err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+		ctx.SendChain(message.Text("Pixiv client proxy 已清除"))
+	})
+
+	engine.OnFullMatch("查看pixiv代理", zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+		var proxyCfg model.PixivProxyConfig
+		proxyCfg.Name = "global"
+		if err := service.DB.Where("name = ?", proxyCfg.Name).FirstOrCreate(&proxyCfg).Error; err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+		if proxyCfg.Proxy == "" {
+			ctx.SendChain(message.Text("Pixiv client proxy: 未设置"))
+			return
+		}
+		ctx.SendChain(message.Text("Pixiv client proxy: ", proxyCfg.Proxy))
 	})
 
 	engine.OnRegex(`^p站搜图(\d+)`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
@@ -109,7 +171,6 @@ func init() {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
 		}
-		// tags的类型是json格式所以就不设置keyword了
 		_ = service.DB.Create(illust)
 		service.SendIllusts(ctx, []model.IllustCache{*illust})
 	})
@@ -155,7 +216,6 @@ func init() {
 	})
 
 	engine.OnRegex(`^每日[色|涩|瑟]图$`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
-
 		illusts, err := service.API.FetchPixivRecommend(1)
 		if err != nil {
 			ctx.SendChain(message.Text("发送涩图失败惹"))
@@ -192,6 +252,7 @@ func init() {
 			ctx.SendChain(message.Text("图片太多了"))
 			return
 		}
+
 		gid := ctx.Event.GroupID
 		r18Req := api.IsR18(keyword)
 		cleanKeyword := api.RemoveR18Keywords(keyword)
@@ -216,7 +277,6 @@ func init() {
 
 		cached, _ := service.DB.GetSentPictureIDs(gid)
 
-		// 准备要发的图也要做过滤
 		for _, ill := range cachedIllusts {
 			cached = append(cached, ill.PID)
 		}
@@ -233,7 +293,6 @@ func init() {
 		}
 
 		service.SendIllusts(ctx, illusts)
-
 		service.BackgroundCacheFiller(cleanKeyword, 10, r18Req, 5, ctx.Event.GroupID)
 	})
 }
