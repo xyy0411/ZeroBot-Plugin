@@ -1,3 +1,4 @@
+// Package pixiv ...
 package pixiv
 
 import (

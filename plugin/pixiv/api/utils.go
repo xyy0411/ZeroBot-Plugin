@@ -1,3 +1,4 @@
+// Package api ...
 package api
 
 import (
@@ -9,6 +10,7 @@ import (
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
 )
 
+// RemoveR18Keywords ...
 func RemoveR18Keywords(keyword string) string {
 	if keyword == "" {
 		return keyword
@@ -71,6 +73,7 @@ func extractTagNames(tags []model.TagsEntity) []string {
 	return tagNames
 }
 
+// IsR18 ...
 func IsR18(s string) bool {
 	if s == "" {
 		return false
@@ -85,6 +88,7 @@ func IsR18(s string) bool {
 	return false
 }
 
+// ModifyPageGeneric ...
 func ModifyPageGeneric(originalURL string, pageNum int) string {
 	u, err := url.Parse(originalURL)
 	if err != nil {
@@ -132,12 +136,12 @@ func convertToIllustCache(raw *model.IllustsEntity) (*model.IllustCache, error) 
 	}
 
 	illust := &model.IllustCache{
-		PID:        raw.Id,
-		UID:        raw.User.Id,
+		PID:        raw.ID,
+		UID:        raw.User.ID,
 		Keyword:    tagNames[0], // 默认为第1个标签后续在其他函数里自定义
 		Title:      raw.Title,
 		AuthorName: raw.User.Name,
-		ImageURL:   raw.ImageUrls.Large,
+		ImageURL:   raw.ImageURLs.Large,
 		R18:        hasR18Tag(tagNames),
 		Bookmarks:  raw.TotalBookmarks,
 		TotalView:  raw.TotalView,
