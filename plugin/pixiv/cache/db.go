@@ -117,7 +117,7 @@ func (db *DB) CountIllustsSmart(gid int64, keyword string, r18Req bool) (int64, 
 // FindIllustsSmart ...
 func (db *DB) FindIllustsSmart(gid int64, keyword string, limit int, r18Req bool) ([]model.IllustCache, error) {
 	seen := make(map[int64]struct{})
-	var results []model.IllustCache
+	results := make([]model.IllustCache, 0, limit)
 
 	// 1. keyword 严格查询
 	kwRes, err := db.findByKeyword(gid, keyword, limit, r18Req)

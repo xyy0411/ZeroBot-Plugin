@@ -187,13 +187,13 @@ func init() {
 		if limit == "" {
 			limit = "1"
 		}
-		rawUid := ctx.State["regex_matched"].([]string)[2]
+		rawUID := ctx.State["regex_matched"].([]string)[2]
 		limitInt, err := strconv.Atoi(limit)
 		if err != nil {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
 		}
-		uid, err := strconv.ParseInt(rawUid, 10, 64)
+		uid, err := strconv.ParseInt(rawUID, 10, 64)
 		if err != nil {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return

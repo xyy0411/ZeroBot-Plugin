@@ -191,13 +191,12 @@ func (p *PixivAPI) fetchPixivCommon(
 				if len(high) >= limit {
 					return high[:limit], nil
 				}
-			} else {
-				// 低质量池还没满 → 接受
-				if len(low) <= limit {
-					low = append(low, *ill)
-				}
-				// 低质量够 limit 就不再放入，避免爆炸增长
 			}
+			// 低质量池还没满 → 接受
+			if len(low) <= limit {
+				low = append(low, *ill)
+			}
+			// 低质量够 limit 就不再放入，避免爆炸增长
 		}
 
 		// 下一页继续
@@ -212,10 +211,10 @@ func (p *PixivAPI) fetchPixivCommon(
 	})
 
 	// 用低质量中的高质量去补齐不足的图
-	all := append(high, low...)
-	if len(all) > limit {
-		all = all[:limit]
+	high = append(high, low...)
+	if len(high) > limit {
+		high = high[:limit]
 	}
 
-	return all, nil
+	return high, nil
 }
