@@ -4,6 +4,7 @@ package api
 import (
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -48,7 +49,7 @@ func NewClient() *Client {
 // SetProxy 设置代理
 func (c *Client) SetProxy(proxyURL string) error {
 	if c == nil || c.transport == nil {
-		return fmt.Errorf("pixiv client is nil")
+		return errors.New("pixiv client is nil")
 	}
 	proxyURL = strings.TrimSpace(proxyURL)
 	if proxyURL == "" {
@@ -90,7 +91,7 @@ func (c *Client) SearchPixivIllustrations(accessToken, url string) (*model.RootE
 
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("搜索失败: %s\nbody: %s", resp.Status, string(body))
+		return nil, errors.New("搜索失败: " + resp.Status + "\nbody: " + string(body))
 	}
 
 	var result model.RootEntity
@@ -111,7 +112,7 @@ func (c *Client) fetchOnce(targetURL, referer string) ([]byte, int, error) {
 
 	resp, err := c.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("请求失败: %w", err)
+		return nil, 0, errors.New("请求失败: " + err.Error())
 	}
 	defer resp.Body.Close()
 
@@ -148,5 +149,5 @@ func (c *Client) FetchPixivImage(illust model.IllustCache, url string) ([]byte, 
 		return nil, &HTTPStatusError{StatusCode: status, URL: url}
 	}
 
-	return nil, fmt.Errorf("下载图片失败")
+	return nil, errors.New("下载图片失败")
 }

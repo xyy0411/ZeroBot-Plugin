@@ -150,7 +150,7 @@ func convertToIllustCache(raw *model.IllustsEntity) (*model.IllustCache, error) 
 		Tags:       jsonTags,
 	}
 
-	originalImageURL := raw.MetaSinglePage.OriginalImageUrl
+	originalImageURL := raw.MetaSinglePage.OriginalImageURL
 	if originalImageURL == "" && len(raw.MetaPages) > 0 {
 		originalImageURL = raw.MetaPages[0].ImageURLs.Original
 	}

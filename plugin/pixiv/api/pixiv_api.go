@@ -2,6 +2,7 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 
@@ -36,7 +37,7 @@ func (p *PixivAPI) FetchPixivByPID(pid int64) (*model.IllustCache, error) {
 		return nil, err
 	}
 	if rawData == nil || rawData.Illust == nil {
-		return nil, fmt.Errorf("pixiv 返回数据为空或结构不匹配")
+		return nil, errors.New("pixiv 返回数据为空或结构不匹配")
 	}
 	return convertToIllustCache(rawData.Illust)
 }
@@ -60,10 +61,10 @@ func (p *PixivAPI) FetchPixivRecommend(limit int) ([]model.IllustCache, error) {
 }
 
 // FetchPixivIllusts ...
-func (p *PixivAPI) FetchPixivIllusts(keyword string, isR18Req bool, limit int, cachedIds []int64) ([]model.IllustCache, error) {
-	cachedMap := make(map[int64]struct{}, len(cachedIds))
-	if len(cachedIds) > 0 {
-		for _, id := range cachedIds {
+func (p *PixivAPI) FetchPixivIllusts(keyword string, isR18Req bool, limit int, cachedIDs []int64) ([]model.IllustCache, error) {
+	cachedMap := make(map[int64]struct{}, len(cachedIDs))
+	if len(cachedIDs) > 0 {
+		for _, id := range cachedIDs {
 			cachedMap[id] = struct{}{}
 		}
 	}
@@ -103,7 +104,7 @@ func (p *PixivAPI) GetIllustsByKeyword(keyword string, limit int, cachedIllust [
 
 	// 如果Pixiv也没查到直接返回空
 	if len(pixivResults) == 0 && len(cachedIllust) == 0 {
-		return nil, fmt.Errorf("这个关键词可能没有找到符合条件的图片或出现未知错误")
+		return nil, errors.New("这个关键词可能没有找到符合条件的图片或出现未知错误")
 	}
 
 	if len(cachedIllust) > 0 && len(pixivResults) == 0 {
@@ -200,7 +201,7 @@ func (p *PixivAPI) fetchPixivCommon(
 		}
 
 		// 下一页继续
-		url = rawData.NextUrl
+		url = rawData.NextURL
 	}
 
 	// ==== 翻页结束：如果高质量不足，就从低质量中挑收藏最多的 ====

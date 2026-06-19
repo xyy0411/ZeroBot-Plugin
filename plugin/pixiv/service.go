@@ -357,6 +357,10 @@ func (s *Service) BackgroundCacheFiller(keyword string, minCache int, r18Req boo
 			return
 		}
 		s1, err := s.DB.GetIllustIDsByKeyword(keyword)
+		if err != nil {
+			log.Print("后台补充缓存失败: ", err)
+			return
+		}
 		sendedcache = append(sendedcache, s1...)
 		newIllusts, err := s.API.FetchPixivIllusts(keyword, r18Req, fetchCount, sendedcache)
 		if err != nil {

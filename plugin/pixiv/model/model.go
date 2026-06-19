@@ -60,7 +60,7 @@ type PixivProxyConfig struct {
 type RootEntity struct {
 	Illusts         []IllustsEntity `json:"illusts"`
 	Illust          *IllustsEntity  `json:"illust"`
-	NextUrl         string          `json:"next_url"`
+	NextURL         string          `json:"next_url"`
 	SearchSpanLimit int64           `json:"search_span_limit"`
 	ShowAi          bool            `json:"show_ai"`
 }
@@ -132,5 +132,5 @@ type TagsEntity struct {
 
 // MetaSinglePageEntity ...
 type MetaSinglePageEntity struct {
-	OriginalImageUrl string `json:"original_image_url"`
+	OriginalImageURL string `json:"original_image_url"`
 }
