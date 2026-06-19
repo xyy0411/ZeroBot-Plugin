@@ -1,3 +1,4 @@
+// Package api ...
 package api
 
 import (
@@ -13,6 +14,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// TokenStore ...
 type TokenStore struct {
 	client       *Client
 	AccessToken  string    `json:"access_token"`
@@ -23,6 +25,7 @@ type TokenStore struct {
 	mu           sync.Mutex
 }
 
+// NewTokenStore ...
 func NewTokenStore(refreshToken string, c *Client) *TokenStore {
 	return &TokenStore{
 		RefreshToken: refreshToken,
@@ -30,6 +33,7 @@ func NewTokenStore(refreshToken string, c *Client) *TokenStore {
 	}
 }
 
+// GetAccessToken ...
 func (t *TokenStore) GetAccessToken() (string, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()

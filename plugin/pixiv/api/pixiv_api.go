@@ -1,3 +1,4 @@
+// Package api ...
 package api
 
 import (
@@ -8,11 +9,13 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// PixivAPI ...
 type PixivAPI struct {
 	Client *Client
 	Token  *TokenStore
 }
 
+// NewPixivAPI ...
 func NewPixivAPI(refreshToken string) *PixivAPI {
 	c := NewClient()
 	return &PixivAPI{
@@ -21,6 +24,7 @@ func NewPixivAPI(refreshToken string) *PixivAPI {
 	}
 }
 
+// FetchPixivByPID ...
 func (p *PixivAPI) FetchPixivByPID(pid int64) (*model.IllustCache, error) {
 	url := fmt.Sprintf("https://app-api.pixiv.net/v1/illust/detail?illust_id=%d", pid)
 	accessToken, err := p.Token.GetAccessToken()
@@ -37,6 +41,7 @@ func (p *PixivAPI) FetchPixivByPID(pid int64) (*model.IllustCache, error) {
 	return convertToIllustCache(rawData.Illust)
 }
 
+// FetchPixivByUser ...
 func (p *PixivAPI) FetchPixivByUser(uid int64, limit int, pids []int64) ([]model.IllustCache, error) {
 	url := fmt.Sprintf("https://app-api.pixiv.net/v1/user/illusts?user_id=%d&type=illust", uid)
 
@@ -48,11 +53,13 @@ func (p *PixivAPI) FetchPixivByUser(uid int64, limit int, pids []int64) ([]model
 	return p.fetchPixivCommon(url, limit, nil, excludeCache)
 }
 
+// FetchPixivRecommend ...
 func (p *PixivAPI) FetchPixivRecommend(limit int) ([]model.IllustCache, error) {
 	firstURL := "https://app-api.pixiv.net/v1/illust/recommended?filter=for_ios"
 	return p.fetchPixivCommon(firstURL, limit, nil, nil) // 不做R18过滤，不排缓存
 }
 
+// FetchPixivIllusts ...
 func (p *PixivAPI) FetchPixivIllusts(keyword string, isR18Req bool, limit int, cachedIds []int64) ([]model.IllustCache, error) {
 	cachedMap := make(map[int64]struct{}, len(cachedIds))
 	if len(cachedIds) > 0 {
@@ -65,6 +72,7 @@ func (p *PixivAPI) FetchPixivIllusts(keyword string, isR18Req bool, limit int, c
 	return p.fetchPixivCommon(firstURL, limit, &isR18Req, cachedMap, keyword)
 }
 
+// GetIllustsByKeyword ...
 func (p *PixivAPI) GetIllustsByKeyword(keyword string, limit int, cachedIllust []model.IllustCache, cached []int64) ([]model.IllustCache, error) {
 
 	r18Req := IsR18(keyword)
@@ -145,15 +153,15 @@ func (p *PixivAPI) fetchPixivCommon(
 			raw := &rawData.Illusts[i]
 
 			// 去重
-			if _, ok := seen[raw.Id]; ok {
+			if _, ok := seen[raw.ID]; ok {
 				continue
 			}
 			if excludeCache != nil {
-				if _, ok := excludeCache[raw.Id]; ok {
+				if _, ok := excludeCache[raw.ID]; ok {
 					continue
 				}
 			}
-			seen[raw.Id] = struct{}{}
+			seen[raw.ID] = struct{}{}
 
 			tagNames := extractTagNames(raw.Tags)
 

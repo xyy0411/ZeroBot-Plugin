@@ -1,3 +1,4 @@
+// Package api ...
 package api
 
 import (
@@ -13,7 +14,7 @@ import (
 	"github.com/FloatTech/ZeroBot-Plugin/plugin/pixiv/model"
 )
 
-// HTTPStatusError 图片下载时的 HTTP 状态码
+// HTTPStatusError ...
 type HTTPStatusError struct {
 	StatusCode int
 	URL        string
@@ -29,6 +30,7 @@ type Client struct {
 	transport *http.Transport
 }
 
+// NewClient ...
 func NewClient() *Client {
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{MaxVersion: tls.VersionTLS13},
@@ -61,6 +63,7 @@ func (c *Client) SetProxy(proxyURL string) error {
 	return nil
 }
 
+// SearchPixivIllustrations ...
 func (c *Client) SearchPixivIllustrations(accessToken, url string) (*model.RootEntity, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {

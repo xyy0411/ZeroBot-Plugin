@@ -1,3 +1,4 @@
+// Package model ...
 package model
 
 import (
@@ -38,6 +39,7 @@ type GroupR18Permission struct {
 	GroupID int64 `gorm:"unique_index"`
 }
 
+// RefreshToken ...
 type RefreshToken struct {
 	gorm.Model
 
@@ -54,6 +56,7 @@ type PixivProxyConfig struct {
 	Proxy string
 }
 
+// RootEntity ...
 type RootEntity struct {
 	Illusts         []IllustsEntity `json:"illusts"`
 	Illust          *IllustsEntity  `json:"illust"`
@@ -62,11 +65,12 @@ type RootEntity struct {
 	ShowAi          bool            `json:"show_ai"`
 }
 
+// IllustsEntity ...
 type IllustsEntity struct {
-	Id              int64                `json:"id"`
+	ID              int64                `json:"id"`
 	Title           string               `json:"title"`
 	Type            string               `json:"type"`
-	ImageUrls       ImageUrlsEntity      `json:"image_urls"`
+	ImageURLs       ImageUrlsEntity      `json:"image_urls"`
 	Caption         string               `json:"caption"`
 	Restrict        int64                `json:"restrict"`
 	User            UserEntity           `json:"user"`
@@ -88,6 +92,7 @@ type IllustsEntity struct {
 	IllustBookStyle int64                `json:"illust_book_style"`
 }
 
+// MetaPage ...
 type MetaPage struct {
 	ImageURLs struct {
 		SquareMedium string `json:"square_medium"`
@@ -97,14 +102,16 @@ type MetaPage struct {
 	} `json:"image_urls"`
 }
 
+// ImageUrlsEntity ...
 type ImageUrlsEntity struct {
 	SquareMedium string `json:"square_medium"`
 	Medium       string `json:"medium"`
 	Large        string `json:"large"`
 }
 
+// UserEntity ...
 type UserEntity struct {
-	Id               int64                  `json:"id"`
+	ID               int64                  `json:"id"`
 	Name             string                 `json:"name"`
 	Account          string                 `json:"account"`
 	ProfileImageUrls ProfileImageUrlsEntity `json:"profile_image_urls"`
@@ -112,15 +119,18 @@ type UserEntity struct {
 	IsAcceptRequest  bool                   `json:"is_accept_request"`
 }
 
+// ProfileImageUrlsEntity ...
 type ProfileImageUrlsEntity struct {
 	Medium string `json:"medium"`
 }
 
+// TagsEntity ...
 type TagsEntity struct {
 	Name           string      `json:"name"`
 	TranslatedName interface{} `json:"translated_name"`
 }
 
+// MetaSinglePageEntity ...
 type MetaSinglePageEntity struct {
 	OriginalImageUrl string `json:"original_image_url"`
 }

@@ -1,3 +1,4 @@
+// Package cache ...
 package cache
 
 import (
@@ -10,11 +11,13 @@ import (
 	"github.com/jinzhu/gorm"
 )
 
+// DB ...
 type DB struct {
 	*gorm.DB
 	mu sync.Mutex
 }
 
+// NewDB ...
 func NewDB(path string) *DB {
 	db, err := gorm.Open("sqlite3", path)
 	if err != nil {
@@ -31,6 +34,7 @@ func NewDB(path string) *DB {
 	return &DB{db, sync.Mutex{}}
 }
 
+// CheckGroupR18Permission ...
 func (db *DB) CheckGroupR18Permission(gid int64) bool {
 	db.mu.Lock()
 	defer db.mu.Unlock()
@@ -88,6 +92,8 @@ func (db *DB) findByTag(gid int64, tag string, needed int, r18Req bool) ([]model
 
 	return results, nil
 }
+
+// CountIllustsSmart ...
 func (db *DB) CountIllustsSmart(gid int64, keyword string, r18Req bool) (int64, error) {
 	db.mu.Lock()
 	defer db.mu.Unlock()
@@ -108,6 +114,7 @@ func (db *DB) CountIllustsSmart(gid int64, keyword string, r18Req bool) (int64, 
 	return count, nil
 }
 
+// FindIllustsSmart ...
 func (db *DB) FindIllustsSmart(gid int64, keyword string, limit int, r18Req bool) ([]model.IllustCache, error) {
 	seen := make(map[int64]struct{})
 	var results []model.IllustCache
@@ -155,6 +162,7 @@ func (db *DB) FindIllustsSmart(gid int64, keyword string, limit int, r18Req bool
 	return results, nil
 }
 
+// GetIllustIDsByKeyword ...
 func (db *DB) GetIllustIDsByKeyword(keyword string) ([]int64, error) {
 	db.mu.Lock()
 	defer db.mu.Unlock()
@@ -167,6 +175,7 @@ func (db *DB) GetIllustIDsByKeyword(keyword string) ([]int64, error) {
 	return illustIDs, nil
 }
 
+// GetSentPictureIDs ...
 func (db *DB) GetSentPictureIDs(gid int64) ([]int64, error) {
 	db.mu.Lock()
 	defer db.mu.Unlock()

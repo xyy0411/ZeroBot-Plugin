@@ -1,3 +1,4 @@
+// Package pixiv ...
 package pixiv
 
 import (
@@ -42,6 +43,7 @@ type taskState struct {
 
 const pixivTempDir = "data/pixiv/temp"
 
+// NewService ...
 func NewService(db *cache.DB, api *api.PixivAPI) *Service {
 	return &Service{
 		DB:              db,
@@ -52,6 +54,7 @@ func NewService(db *cache.DB, api *api.PixivAPI) *Service {
 	}
 }
 
+// Acquire ...
 func (s *Service) Acquire(userID int64) bool {
 	s.taskMu.Lock()
 	defer s.taskMu.Unlock()
@@ -69,6 +72,7 @@ func (s *Service) Acquire(userID int64) bool {
 	return true
 }
 
+// Release ...
 func (s *Service) Release(userID int64) {
 	s.taskMu.Lock()
 	defer s.taskMu.Unlock()
@@ -167,6 +171,7 @@ func toFileImage(path string) message.Segment {
 	return message.Image("file:///" + normalized)
 }
 
+// SendIllusts ...
 func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 	downloadSem := make(chan struct{}, s.DownloadWorkers)
 	type DLResult struct {
@@ -323,6 +328,7 @@ func (s *Service) SendIllusts(ctx *zero.Ctx, illusts []model.IllustCache) {
 	}
 }
 
+// BackgroundCacheFiller ...
 func (s *Service) BackgroundCacheFiller(keyword string, minCache int, r18Req bool, fetchCount int, gid int64) {
 	if _, loaded := cacheFilling.LoadOrStore(keyword, struct{}{}); loaded {
 		log.Print("已有后台任务在补缓存: ", keyword)
