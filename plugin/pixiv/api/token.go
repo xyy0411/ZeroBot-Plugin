@@ -4,7 +4,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -74,7 +74,7 @@ func (t *TokenStore) refreshPixivAccessToken() error {
 
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("刷新失败: %s\nbody: %s", resp.Status, string(body))
+		return errors.New("刷新失败: " + resp.Status + "\nbody: " + string(body))
 	}
 
 	var tokenRes TokenStore
