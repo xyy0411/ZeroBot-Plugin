@@ -23,7 +23,7 @@ var (
 	})
 )
 
-var regexpstring = `^(有无|有人|谁来)(联机|匹配|打架|对决|玩吗|to|qd|lh|uu|主机|副机|主副皆可|仅主|仅副)?$`
+var regexpString = `^(有无|有人|谁来)(联机|匹配|打架|对决|玩吗|to|qd|lh|uu|主机|副机|主副皆可|仅主|仅副)?$`
 
 func init() {
 	engine.OnFullMatch("更新个人信息", zero.OnlyPrivate).SetBlock(true).
@@ -37,7 +37,7 @@ func init() {
 			sendTextResult(ctx, msg, err)
 		})
 
-	engine.OnRegex(regexpstring, getDB).SetBlock(true).
+	engine.OnRegex(regexpString, getDB).SetBlock(true).
 		Handle(handlePassiveMatchingPrompt)
 
 	engine.OnFullMatchGroup([]string{"查看匹配状态", "查看我的匹配状态"}, getDB).SetBlock(true).

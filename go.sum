@@ -12,8 +12,6 @@ github.com/FloatTech/ttl v0.0.0-20250224045156-012b1463287d h1:mUQ/c3wXKsUGa4Sg9
 github.com/FloatTech/ttl v0.0.0-20250224045156-012b1463287d/go.mod h1:fHZFWGquNXuHttu9dUYoKuNbm3dzLETnIOnm1muSfDs=
 github.com/FloatTech/zbpctrl v1.7.1 h1:0yPEmCForhyMbnhTckmjDUFFDZgQp1RjO2bVF4ZVqOs=
 github.com/FloatTech/zbpctrl v1.7.1/go.mod h1:xmM4dSwHA02Gei3ogCRiG+RTrw/7Z69PfrN5NYf8BPE=
-github.com/FloatTech/zbputils v1.7.2-0.20260404160535-78e737f6c143 h1:682fCAugBlIpSLaFtZWOUIaOe7ehmQl6c74Y0ahMC/0=
-github.com/FloatTech/zbputils v1.7.2-0.20260404160535-78e737f6c143/go.mod h1:J2r4fe8ed7s/R9E/+yakfGiU1mFNGxB6Y+hZo/x6kI0=
 github.com/PuerkitoBio/goquery v1.5.1/go.mod h1:GsLWisAFVj4WgDibEWF4pvYnkVQBpKBKeU+7zCJoLcc=
 github.com/RomiChan/syncx v0.0.0-20240418144900-b7402ffdebc7 h1:S/ferNiehVjNaBMNNBxUjLtVmP/YWD6Yh79RfPv4ehU=
 github.com/RomiChan/syncx v0.0.0-20240418144900-b7402ffdebc7/go.mod h1:vD7Ra3Q9onRtojoY5sMCLQ7JBgjUsrXDnDKyFxqpf9w=
@@ -127,6 +125,8 @@ github.com/wcharczuk/go-chart/v2 v2.1.2 h1:Y17/oYNuXwZg6TFag06qe8sBajwwsuvPiJJXc
 github.com/wcharczuk/go-chart/v2 v2.1.2/go.mod h1:Zi4hbaqlWpYajnXB2K22IUYVXRXaLfSGNNR7P4ukyyQ=
 github.com/wdvxdr1123/ZeroBot v1.8.3-0.20260407110317-d207de3b6c79 h1:B4W9IJZZ9jgZI9Zj+bs/dXk9ahboPxgOJ60hu8YDsIo=
 github.com/wdvxdr1123/ZeroBot v1.8.3-0.20260407110317-d207de3b6c79/go.mod h1:kCLja2sXXgbBTsEOyBNCuT4z9tI+URQ2y0q/GGXprzU=
+github.com/xyy0411/zbputils v0.0.0-20260902143028-64533b196da8 h1:uKDaN/kslYpyEg5xQZJ64UytEIwtsNJlUtrFmm3sGtU=
+github.com/xyy0411/zbputils v0.0.0-20260902143028-64533b196da8/go.mod h1:DavniRwuFvJcHCkK6kt4Y257TPg63k/jvXRmdIKQFo4=
 github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
 github.com/yusufpapurcu/wmi v1.2.4 h1:zFUKzehAFReQwLys1b/iSMl+JQGSCSjtVqQn9bBrPo0=
 github.com/yusufpapurcu/wmi v1.2.4/go.mod h1:SBZ9tNy3G9/m5Oi98Zks0QjeHVDvuK0qfxQmPyzfmi0=
