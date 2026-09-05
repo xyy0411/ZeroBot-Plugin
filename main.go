@@ -64,6 +64,7 @@ import (
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/event"        // 好友申请群聊邀请事件处理
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/inject"       // 注入指令
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/matching"     // bvn匹配系统
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/runcode"      // runcode
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/wife"         // 抽老婆
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/wordcount"    // 聊天热词
 
